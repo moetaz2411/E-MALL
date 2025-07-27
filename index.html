@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+   <link rel="stylesheet" href="website.css">
+    <title>MallHub - Your Digital Shopping Mall</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <script>
+  (function() {
+    emailjs.init({
+      publicKey: "VwtS6_h8VTDHglzyH", // Your public key
+      blockHeadless: true, // Prevents spam
+    });
+  })();
+</script>
+</head>
+<body>
+    <!-- Gradient Background -->
+    <div class="gradient-bg"></div>
+    
+    <!-- Header/Navbar -->
+    <header class="header">
+        <div class="container">
+            <div class="logo">
+                <a href="#">Mall<span>Hub</span></a>
+            </div>
+            
+            <div class="search-bar">
+                <input type="text" placeholder="Search for products, brands...">
+                <button><i class="fas fa-search"></i></button>
+            </div>
+<nav class="navbar">
+  <ul>
+    <li><a href="#"><i class="fas fa-home"></i> Home</a></li>
+    <li><a href="#" id="shops-btn"><i class="fas fa-store"></i> Shops</a></li>
+    <li><a href="#" id="deals-btn"><i class="fas fa-percent"></i> Deals</a></li>
+    <li><a href="#" id="cart-btn"><i class="fas fa-shopping-cart"></i> Cart <span class="cart-count">0</span></a></li>
+    <li><a href="#" id="login-btn"><i class="fas fa-user"></i> Login</a></li>
+  </ul>
+</nav>
+            
+            <div class="mobile-menu-btn">
+                <i class="fas fa-bars"></i>
+            </div>
+        </div>
+    </header>
+    
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1>Your Digital Shopping Mall</h1>
+                <p>Discover thousands of products from verified sellers worldwide</p>
+                <div class="hero-btns">
+                    <a href="#" class="btn btn-primary">Shop Now</a>
+                    <a href="#" class="btn btn-secondary">Become a Seller</a>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Categories Section -->
+    <section class="categories">
+        <div class="container">
+            <h2 class="section-title">Shop by Category</h2>
+            <div class="category-grid">
+                <div class="category-card">
+             <img src="https://files.catbox.moe/hflc8d.jpg" alt="Fashion">
+                    <h3>Fashion</h3>
+                </div>
+                <div class="category-card">
+                    <img src="https://files.catbox.moe/v3ikq7.jpg" alt="Electronics">
+                    <h3>Electronics</h3>
+                </div>
+                <div class="category-card">
+                  <img src="https://files.catbox.moe/dgagu5.jpg" alt="Home & Garden">
+                    <h3>Home & Garden</h3>
+                </div>
+                <div class="category-card">
+                 <img src="https://files.catbox.moe/0fiync.jpg" alt="Beauty">
+                    <h3>Beauty</h3>
+                </div>
+                <div class="category-card">
+                    <img src="https://files.catbox.moe/ghr92b.jpg" alt="Sports">
+                    <h3>Sports</h3>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Featured Products -->
+    <section class="featured-products">
+        <div class="container">
+            <div class="section-header">
+                <h2 class="section-title">Featured Products</h2>
+                <div class="filter-options">
+                    <select id="category-filter">
+                        <option value="all">All Categories</option>
+                        <option value="fashion">Fashion</option>
+                        <option value="electronics">Electronics</option>
+                        <option value="home">Home & Garden</option>
+                        <option value="beauty">Beauty</option>
+                    </select>
+                    <select id="price-filter">
+                        <option value="all">All Prices</option>
+                        <option value="0-50">$0 - $50</option>
+                        <option value="50-100">$50 - $100</option>
+                        <option value="100-500">$100 - $500</option>
+                        <option value="500+">$500+</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="product-grid" id="product-grid">
+                <!-- Products will be loaded here via JavaScript -->
+            </div>
+        </div>
+    </section>
+    
+    <!-- Seller Spotlight -->
+    <section class="sellers">
+        <div class="container">
+            <h2 class="section-title">Seller Spotlight</h2>
+            <div class="seller-grid">
+                <div class="seller-card">
+                   <img src="https://placehold.co/150x150?text=Seller+1" alt="Seller 1">
+                    <h3>Fashion Haven</h3>
+                    <p>Specializing in trendy clothing</p>
+                    <a href="#" class="btn btn-small">Visit Shop</a>
+                </div>
+                <div class="seller-card">
+                    <<img src="https://placehold.co/150x150?text=Seller+1" alt="Seller 1">
+                    <h3>Tech Gadgets</h3>
+                    <p>Latest electronics</p>
+                    <a href="#" class="btn btn-small">Visit Shop</a>
+                </div>
+                <div class="seller-card">
+                    <img src="https://placehold.co/150x150?text=Seller+1" alt="Seller 1">
+                    <h3>Home Essentials</h3>
+                    <p>Everything for your home</p>
+                    <a href="#" class="btn btn-small">Visit Shop</a>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-col">
+                    <h3>MallHub</h3>
+                    <p>Your digital shopping mall connecting buyers and sellers worldwide.</p>
+                    <div class="social-links">
+                        <a href="#"><i class="fab fa-facebook"></i></a>
+                        <a href="#"><i class="fab fa-twitter"></i></a>
+                        <a href="#"><i class="fab fa-instagram"></i></a>
+                        <a href="#"><i class="fab fa-linkedin"></i></a>
+                    </div>
+                </div>
+                <div class="footer-col">
+                    <h3>Quick Links</h3>
+                    <ul>
+                        <li><a href="#">Home</a></li>
+                        <li><a href="#">Products</a></li>
+                        <li><a href="#">Shops</a></li>
+                        <li><a href="#">Deals</a></li>
+                        <li><a href="#">About Us</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h3>Customer Service</h3>
+                    <ul>
+                        <li><a href="#">Contact Us</a></li>
+                        <li><a href="#">FAQs</a></li>
+                        <li><a href="#">Shipping Policy</a></li>
+                        <li><a href="#">Returns & Refunds</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h3>Newsletter</h3>
+                    <p>Subscribe to get updates on new products and special offers</p>
+                    <form class="newsletter-form">
+                        <input type="email" placeholder="Your email address">
+                        <button type="submit">Subscribe</button>
+                    </form>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2023 MallHub. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+    
+    <!-- Login Modal -->
+    <div class="modal" id="login-modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2>Login to Your Account</h2>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Login</button>
+                <p class="form-footer">Don't have an account? <a href="#" id="show-register">Register</a></p>
+            </form>
+            
+            <form id="register-form" style="display: none;">
+                <h2>Create an Account</h2>
+                <div class="form-group">
+                    <label for="register-name">Full Name</label>
+                    <input type="text" id="register-name" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-email">Email</label>
+                    <input type="email" id="register-email" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-password">Password</label>
+                    <input type="password" id="register-password" required>
+                </div>
+                <div class="form-group">
+                    <label for="register-confirm-password">Confirm Password</label>
+                    <input type="password" id="register-confirm-password" required>
+                </div>
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" id="register-seller"> I want to register as a seller
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">Register</button>
+                <p class="form-footer">Already have an account? <a href="#" id="show-login">Login</a></p>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Seller Dashboard Modal -->
+    <div class="modal" id="seller-modal">
+        <div class="modal-content seller-dashboard">
+            <span class="close-modal">&times;</span>
+            <h2>Seller Dashboard</h2>
+            <div class="seller-tabs">
+                <button class="tab-btn active" data-tab="add-product">Add Product</button>
+                <button class="tab-btn" data-tab="my-products">My Products</button>
+                <button class="tab-btn" data-tab="orders">Orders</button>
+                <button class="tab-btn" data-tab="shop-settings">Shop Settings</button>
+            </div>
+            
+            <div class="tab-content active" id="add-product">
+                <form id="add-product-form">
+                    <div class="form-group">
+                        <label for="product-name">Product Name</label>
+                        <input type="text" id="product-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-price">Price ($)</label>
+                        <input type="number" id="product-price" step="0.01" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-category">Category</label>
+                        <select id="product-category" required>
+                            <option value="fashion">Fashion</option>
+                            <option value="electronics">Electronics</option>
+                            <option value="home">Home & Garden</option>
+                            <option value="beauty">Beauty</option>
+                            <option value="sports">Sports</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-description">Description</label>
+                        <textarea id="product-description" rows="4" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="product-images">Upload Images</label>
+                        <input type="file" id="product-images" multiple accept="image/*">
+                        <div class="image-preview" id="image-preview"></div>
+                    </div>
+                    <div class="form-group">
+                        <label>Product Options</label>
+                        <div class="product-options">
+                            <div class="option-item">
+                                <input type="text" placeholder="Option name (e.g., Size)" class="option-name">
+                                <input type="text" placeholder="Values (comma separated, e.g., S,M,L)" class="option-values">
+                                <button type="button" class="btn btn-small remove-option">Remove</button>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-small" id="add-option">Add Option</button>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Add Product</button>
+                </form>
+            </div>
+            
+            <div class="tab-content" id="my-products">
+                <div class="products-list" id="seller-products-list">
+                    <!-- Seller's products will be loaded here -->
+                    <p>No products added yet.</p>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="orders">
+                <div class="orders-list">
+                    <!-- Orders will be loaded here -->
+                    <p>No orders yet.</p>
+                </div>
+            </div>
+            
+            <div class="tab-content" id="shop-settings">
+                <form id="shop-settings-form">
+                    <div class="form-group">
+                        <label for="shop-name">Shop Name</label>
+                        <input type="text" id="shop-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="shop-description">Description</label>
+                        <textarea id="shop-description" rows="4" required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="shop-logo">Shop Logo</label>
+                        <input type="file" id="shop-logo" accept="image/*">
+                        <div class="image-preview" id="shop-logo-preview"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="shop-banner">Shop Banner</label>
+                        <input type="file" id="shop-banner" accept="image/*">
+                        <div class="image-preview" id="shop-banner-preview"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="shop-url">Shop URL</label>
+                        <div class="input-group">
+                            <span class="input-group-text">mallhub.com/shop/</span>
+                            <input type="text" id="shop-url" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Save Settings</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Checkout Modal -->
+<div class="modal" id="checkout-modal">
+    <div class="modal-content checkout-content">
+        <span class="close-modal">&times;</span>
+        <h2>Complete Your Purchase</h2>
+        <form id="checkout-form">
+            <div class="checkout-grid">
+                <div class="checkout-products">
+                    <h3>Your Order</h3>
+                    <div class="checkout-product-list" id="checkout-product-list">
+                        <!-- Products will be added here -->
+                    </div>
+                    <div class="checkout-total">
+                        <p>Total: <span id="checkout-total-price">$0.00</span></p>
+                    </div>
+                </div>
+                
+                <div class="checkout-details">
+                    <h3>Shipping Information</h3>
+                    <div class="form-group">
+                        <label for="checkout-name">Full Name</label>
+                        <input type="text" id="checkout-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="checkout-email">Email</label>
+                        <input type="email" id="checkout-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="checkout-phone">Phone Number</label>
+                        <input type="tel" id="checkout-phone" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="checkout-address">Address</label>
+                        <input type="text" id="checkout-address" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="checkout-city">City</label>
+                        <input type="text" id="checkout-city" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="checkout-zip">ZIP Code</label>
+                        <input type="text" id="checkout-zip" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="checkout-country">Country</label>
+                        <select id="checkout-country" required>
+                            <option value="">Select Country</option>
+                            <option value="US">United States</option>
+                            <option value="UK">United Kingdom</option>
+                            <option value="CA">Canada</option>
+                            <option value="AU">Australia</option>
+                            <!-- More countries can be added -->
+                        </select>
+                    </div>
+                    
+                    <h3>Payment Method</h3>
+                    <div class="payment-methods">
+                        <label class="payment-method">
+                            <input type="radio" name="payment" value="credit-card" checked>
+                            <i class="fas fa-credit-card"></i> Credit Card
+                        </label>
+                        <label class="payment-method">
+                            <input type="radio" name="payment" value="paypal">
+                            <i class="fab fa-paypal"></i> PayPal
+                        </label>
+                        <label class="payment-method">
+                            <input type="radio" name="payment" value="bank-transfer">
+                            <i class="fas fa-university"></i> Bank Transfer
+                        </label>
+                    </div>
+                    
+                    <div class="payment-details" id="credit-card-details">
+                        <div class="form-group">
+                            <label for="card-number">Card Number</label>
+                            <input type="text" id="card-number" placeholder="1234 5678 9012 3456">
+                        </div>
+                        <div class="form-group-row">
+                            <div class="form-group">
+                                <label for="card-expiry">Expiry Date</label>
+                                <input type="text" id="card-expiry" placeholder="MM/YY">
+                            </div>
+                            <div class="form-group">
+                                <label for="card-cvc">CVC</label>
+                                <input type="text" id="card-cvc" placeholder="123">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="card-name">Name on Card</label>
+                            <input type="text" id="card-name">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group terms">
+                        <label>
+                            <input type="checkbox" id="accept-terms" required>
+                            I agree to the <a href="#">terms and conditions</a>
+                        </label>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-block">Complete Purchase</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+    
+    <!-- Product Options Modal -->
+    <div class="modal" id="product-options-modal">
+        <div class="modal-content product-options-content">
+            <span class="close-modal">&times;</span>
+            <h2 id="options-product-name">Product Name</h2>
+            <div class="product-options-form">
+                <!-- Dynamic options will be added here -->
+            </div>
+            <div class="options-actions">
+                <button class="btn btn-primary" id="add-to-cart-btn">Add to Cart</button>
+                <button class="btn btn-secondary" id="buy-now-btn">Buy Now</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Success Modal -->
+    <!-- Properly structured HTML -->
+<div class="modal" id="success-modal">
+    <div class="modal-content success-content">
+        <div class="success-icon">
+            <i class="fas fa-check-circle"></i>
+        </div>
+        <h2 id="success-title">Success!</h2>
+        <p id="success-message">Your action was completed successfully.</p>
+        <button class="btn btn-primary" id="success-ok-btn">OK</button>
+    </div>
+</div>
+<!-- Add these two modals right before the </body> tag -->
+<div class="modal" id="admin-shops-modal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Admin - Shops Management</h2>
+        
+        <div class="admin-shops-container">
+            <div class="admin-shops-search">
+                <input type="text" id="admin-shops-search" placeholder="Search shops...">
+                <button id="admin-shops-search-btn"><i class="fas fa-search"></i></button>
+            </div>
+            
+            <div class="admin-shops-list" id="admin-shops-list">
+                <!-- Shops will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Shop Details Modal -->
+<div class="modal" id="admin-shop-details-modal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2 id="admin-shop-details-title">Shop Details</h2>
+        
+        <div class="shop-stats">
+            <div class="stat-card">
+                <h3>Total Sales</h3>
+                <p id="shop-total-sales">0</p>
+            </div>
+            <div class="stat-card">
+                <h3>Total Revenue</h3>
+                <p id="shop-total-revenue">$0.00</p>
+            </div>
+            <div class="stat-card">
+                <h3>Our Commission</h3>
+                <p id="shop-commission">$0.00</p>
+            </div>
+        </div>
+        
+        <h3>Products Sold</h3>
+        <div class="shop-products-list" id="admin-shop-products-list">
+            <!-- Products will be loaded here -->
+        </div>
+    </div>
+</div>
+<!-- Admin Verification Modal -->
+<div class="modal" id="admin-verification-modal">
+    <div class="modal-content verification-modal">
+        <span class="close-modal">&times;</span>
+        <h2>Admin Verification</h2>
+        <p>Please enter admin code to access shops management:</p>
+        <input type="password" id="admin-code" placeholder="Enter admin code">
+        <button id="verify-admin-btn" class="btn btn-primary">Verify</button>
+    </div>
+</div>
+<!-- Add this with the other modals -->
+<!-- Manual Verification Modal -->
+<div class="modal" id="manual-verification-modal">
+    <div class="modal-content verification-modal">
+        <span class="close-modal">&times;</span>
+        <h2>Manual Verification</h2>
+        <p>Enter your seller credentials to gain immediate access</p>
+        
+        <div class="form-group">
+            <label for="manual-email">Email Address</label>
+            <input type="email" id="manual-email" placeholder="Your registered email">
+        </div>
+        
+        <div class="form-group">
+            <label for="verification-code">Verification Code</label>
+            <input type="password" id="verification-code" placeholder="Your verification code">
+        </div>
+        
+        <button id="verify-manual-btn">Verify & Access Dashboard</button>
+    </div>
+</div>
+ <!-- Firebase Scripts -->
+  <!-- Add Firebase SDK -->
+<!-- Firebase Scripts -->
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database-compat.js"></script>
+<script src="website.js"></script>
+ <!-- Add this with the other modals -->
+</div>
+</body>
+</html>
