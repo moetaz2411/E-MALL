@@ -106,10 +106,10 @@
                     </select>
                     <select id="price-filter">
                         <option value="all">All Prices</option>
-                        <option value="0-50">$0 - $50</option>
-                        <option value="50-100">$50 - $100</option>
-                        <option value="100-500">$100 - $500</option>
-                        <option value="500+">$500+</option>
+                        <option value="0-50">DT0 - DT50</option>
+                        <option value="50-100">DT50 - DT100</option>
+                        <option value="100-500">DT100 - DT500</option>
+                        <option value="500+">DT500+</option>
                     </select>
                 </div>
             </div>
@@ -262,7 +262,7 @@
                         <input type="text" id="product-name" required>
                     </div>
                     <div class="form-group">
-                        <label for="product-price">Price ($)</label>
+                        <label for="product-price">Price (DT)</label>
                         <input type="number" id="product-price" step="0.01" required>
                     </div>
                     <div class="form-group">
@@ -359,7 +359,7 @@
                         <!-- Products will be added here -->
                     </div>
                     <div class="checkout-total">
-                        <p>Total: <span id="checkout-total-price">$0.00</span></p>
+                        <p>Total: <span id="checkout-total-price">DT0.00</span></p>
                     </div>
                 </div>
                 
@@ -511,11 +511,11 @@
             </div>
             <div class="stat-card">
                 <h3>Total Revenue</h3>
-                <p id="shop-total-revenue">$0.00</p>
+                <p id="shop-total-revenue">DT0.00</p>
             </div>
             <div class="stat-card">
                 <h3>Our Commission</h3>
-                <p id="shop-commission">$0.00</p>
+                <p id="shop-commission">DT0.00</p>
             </div>
         </div>
         
