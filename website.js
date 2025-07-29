@@ -13,6 +13,7 @@ const firebaseConfig = {
 const app = firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 const auth = firebase.auth();
+
 // Add auth state listener
 auth.onAuthStateChanged(user => {
   if (user) {
@@ -27,14 +28,388 @@ auth.onAuthStateChanged(user => {
   }
 });
 
-// Helper function to hide admin buttons
-// Helper function to show admin buttons
+// Define exchange rates (accurate as of 2025)
+const CURRENCY_CONFIG = {
+  USD: { symbol: '$', name: 'US Dollar', rate: 1.0 },
+  TND: { symbol: 'DT', name: 'Tunisian Dinar', rate: 3.11 },
+  EUR: { symbol: '€', name: 'Euro', rate: 0.93 },
+  GBP: { symbol: '£', name: 'British Pound', rate: 0.79 },
+  JPY: { symbol: '¥', name: 'Japanese Yen', rate: 157.32 },
+  CAD: { symbol: 'CA$', name: 'Canadian Dollar', rate: 1.37 },
+  AUD: { symbol: 'AU$', name: 'Australian Dollar', rate: 1.52 },
+  CHF: { symbol: 'Fr', name: 'Swiss Franc', rate: 0.90 },
+  CNY: { symbol: '¥', name: 'Chinese Yuan', rate: 7.25 },
+  INR: { symbol: '₹', name: 'Indian Rupee', rate: 83.43 },
+  BRL: { symbol: 'R$', name: 'Brazilian Real', rate: 5.52 },
+  MXN: { symbol: 'MX$', name: 'Mexican Peso', rate: 17.21 },
+  TRY: { symbol: '₺', name: 'Turkish Lira', rate: 32.54 },
+  ZAR: { symbol: 'R', name: 'South African Rand', rate: 18.25 },
+  RUB: { symbol: '₽', name: 'Russian Ruble', rate: 89.45 },
+  KRW: { symbol: '₩', name: 'South Korean Won', rate: 1375.67 },
+  SGD: { symbol: 'S$', name: 'Singapore Dollar', rate: 1.35 },
+  HKD: { symbol: 'HK$', name: 'Hong Kong Dollar', rate: 7.82 },
+  SEK: { symbol: 'kr', name: 'Swedish Krona', rate: 10.68 },
+  NOK: { symbol: 'kr', name: 'Norwegian Krone', rate: 10.72 },
+  NZD: { symbol: 'NZ$', name: 'New Zealand Dollar', rate: 1.67 },
+  THB: { symbol: '฿', name: 'Thai Baht', rate: 36.52 },
+  AED: { symbol: 'د.إ', name: 'UAE Dirham', rate: 3.67 },
+  SAR: { symbol: '﷼', name: 'Saudi Riyal', rate: 3.75 },
+  PLN: { symbol: 'zł', name: 'Polish Złoty', rate: 4.17 },
+  HUF: { symbol: 'Ft', name: 'Hungarian Forint', rate: 360.75 },
+  CZK: { symbol: 'Kč', name: 'Czech Koruna', rate: 23.41 },
+  DKK: { symbol: 'kr', name: 'Danish Krone', rate: 6.93 },
+  RON: { symbol: 'lei', name: 'Romanian Leu', rate: 4.62 },
+  HRK: { symbol: 'kn', name: 'Croatian Kuna', rate: 7.02 },
+  MYR: { symbol: 'RM', name: 'Malaysian Ringgit', rate: 4.71 },
+  PHP: { symbol: '₱', name: 'Philippine Peso', rate: 56.42 },
+  IDR: { symbol: 'Rp', name: 'Indonesian Rupiah', rate: 15623.50 },
+  VND: { symbol: '₫', name: 'Vietnamese Dong', rate: 24750.00 },
+  CLP: { symbol: '$', name: 'Chilean Peso', rate: 885.50 },
+  COP: { symbol: '$', name: 'Colombian Peso', rate: 4120.00 },
+  PEN: { symbol: 'S/', name: 'Peruvian Sol', rate: 3.78 },
+  UAH: { symbol: '₴', name: 'Ukrainian Hryvnia', rate: 37.85 },
+  KWD: { symbol: 'د.ك', name: 'Kuwaiti Dinar', rate: 0.31 },
+  QAR: { symbol: 'ر.ق', name: 'Qatari Riyal', rate: 3.64 }
+};
+
+
+// FIX 1: Rename convertPrice to convertCurrency and fix implementation
+function convertCurrency(price, fromCurrency = 'USD', toCurrency = 'TND') {
+  if (!price || isNaN(price)) return 0;
+  if (fromCurrency === toCurrency) return price;
+  
+  const fromRate = CURRENCY_CONFIG[fromCurrency]?.rate || 1;
+  const toRate = CURRENCY_CONFIG[toCurrency]?.rate || 1;
+  
+  // Convert via USD as base currency
+  return (price / fromRate) * toRate;
+}
+
+// Format currency display
+function formatCurrency(amount, currencyCode) {
+  const currency = CURRENCY_CONFIG[currencyCode];
+  if (!currency) return `${amount.toFixed(2)}`;
+  
+  // Handle currencies without decimals
+  const decimalDigits = ['JPY', 'KRW', 'VND', 'IDR'].includes(currencyCode) ? 0 : 2;
+  
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency',
+    currency: currencyCode,
+    minimumFractionDigits: decimalDigits,
+    maximumFractionDigits: decimalDigits
+  }).format(amount);
+}
+
+// Currency converter CSS
+const currencyConverterCSS = `
+.currency-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.currency-converter-popup {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+  width: 350px;
+  overflow: hidden;
+  font-family: 'Segoe UI', system-ui;
+}
+
+.popup-header {
+  background: #2563eb;
+  color: white;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.popup-header h3 {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1.2rem;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.popup-body {
+  padding: 24px;
+}
+
+.original-price {
+  font-size: 1rem;
+  color: #4b5563;
+  margin-bottom: 20px;
+}
+
+.converter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.currency-selector {
+  padding: 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 1rem;
+  background-color: #f9fafb;
+}
+
+.converted-price-display {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #1f2937;
+  text-align: center;
+  padding: 12px;
+  background: #f3f4f6;
+  border-radius: 8px;
+}
+
+.popup-footer {
+  padding: 16px;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: center;
+}
+
+.apply-global-btn {
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.apply-global-btn:hover {
+  background: #1d4ed8;
+}
+
+.set-default-btn {
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-left: 10px;
+}
+
+.set-default-btn:hover {
+  background: #059669;
+}
+
+.convert-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.2rem;
+  margin-left: 8px;
+  padding: 4px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+  vertical-align: middle;
+}
+
+.convert-btn:hover {
+  opacity: 1;
+}
+`;
+
+// Inject CSS
+const style = document.createElement('style');
+style.textContent = currencyConverterCSS;
+document.head.appendChild(style);
+
+
+function getCurrencyPopupHTML(usdAmount, defaultCurrency = 'TND') {
+  let optionsHTML = '';
+  for (const [code, { name }] of Object.entries(CURRENCY_CONFIG)) {
+    const selected = code === defaultCurrency ? 'selected' : '';
+    optionsHTML += `<option value="${code}" ${selected}>${name} (${code})</option>`;
+  }
+
+  return `
+    <div class="currency-converter-popup">
+      <div class="popup-header">
+        <h3>Currency Converter</h3>
+        <button class="close-btn">&times;</button>
+      </div>
+      <div class="popup-body">
+        <p class="original-price">Original: ${formatCurrency(usdAmount, 'USD')}</p>
+        <div class="converter-controls">
+          <select class="currency-selector">
+            ${optionsHTML}
+          </select>
+          <div class="converted-price-display">
+            ${formatCurrency(convertCurrency(usdAmount, 'USD', defaultCurrency), defaultCurrency)}
+          </div>
+        </div>
+      </div>
+      <div class="popup-footer">
+        <button class="apply-global-btn">Apply to All Prices</button>
+        <button class="set-default-btn">Set as Default</button>
+      </div>
+    </div>
+  `;
+}
+
+function initCurrencyConverter() {
+  // Handle conversion button clicks
+  document.addEventListener('click', function(e) {
+    const convertBtn = e.target.closest('.convert-btn');
+    if (convertBtn) {
+      const usdAmount = parseFloat(convertBtn.dataset.usd);
+      if (!isNaN(usdAmount)) {
+        showCurrencyPopup(usdAmount);
+      }
+    }
+  });
+
+
+
+  // =====================
+  // Initialize on DOM Load
+  // =====================
+  document.addEventListener('DOMContentLoaded', () => {
+    // Initialize converter
+    
+    // Apply saved currency preference
+    const savedCurrency = localStorage.getItem('preferredCurrency') || 
+                          (document.cookie.match(/preferred_currency=([^;]+)/) || [])[1];
+    
+    if (savedCurrency && CURRENCY_CONFIG[savedCurrency]) {
+      updateAllPrices(savedCurrency);
+    }
+  });
+}
+function updateAllPrices(currencyCode) {
+  document.querySelectorAll('.price-display').forEach(displayElement => {
+    const usdAmount = parseFloat(displayElement.dataset.usd);
+    
+    if (!isNaN(usdAmount)) {
+      const convertedAmount = convertCurrency(usdAmount, 'USD', currencyCode);
+      displayElement.textContent = formatCurrency(convertedAmount, currencyCode);
+      displayElement.dataset.currentCurrency = currencyCode;
+      
+      // Update conversion button
+      const convertBtn = displayElement.nextElementSibling;
+      if (convertBtn && convertBtn.classList.contains('convert-btn')) {
+        convertBtn.dataset.usd = usdAmount;
+      }
+    }
+  });
+}
+
+function savePreferredCurrency(currencyCode) {
+  try {
+    localStorage.setItem('preferredCurrency', currencyCode);
+    console.log(`Saved preferred currency: ${currencyCode}`);
+  } catch (e) {
+    console.error('Error saving currency preference:', e);
+  }
+}
+function setupPopupEvents(overlay, usdAmount) {
+  // Close button
+  overlay.querySelector('.close-btn').addEventListener('click', () => {
+    document.body.removeChild(overlay);
+  });
+
+  // Currency selection change
+  const selector = overlay.querySelector('.currency-selector');
+  selector.addEventListener('change', function() {
+    const selectedCurrency = this.value;
+    const convertedAmount = convertCurrency(usdAmount, 'USD', selectedCurrency);
+    overlay.querySelector('.converted-price-display').textContent = 
+      formatCurrency(convertedAmount, selectedCurrency);
+  });
+
+  // Apply globally button
+    overlay.querySelector('.apply-global-btn').addEventListener('click', function() {
+    const selectedCurrency = selector.value;
+    savePreferredCurrency(selectedCurrency); // Use global function
+    updateAllPrices(selectedCurrency);
+    document.body.removeChild(overlay);
+  });
+
+  // Set as default button
+  overlay.querySelector('.set-default-btn').addEventListener('click', function() {
+    const selectedCurrency = selector.value;
+    savePreferredCurrency(selectedCurrency); // Use global function
+    document.body.removeChild(overlay);
+  });
+
+
+  // Overlay click
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) {
+      document.body.removeChild(overlay);
+    }
+  });
+}
+
+function handleConversionClick(e) {
+  if (e.target.closest('.convert-btn')) {
+    const btn = e.target.closest('.convert-btn');
+    const display = btn.previousElementSibling;
+    const basePrice = parseFloat(btn.dataset.usd); // Use 'usd' not 'baseprice'
+    
+    // Get user's preferred currency
+    const userCurrency = loadPreferredCurrency(); // Add this line
+    
+    // Toggle between USD and user's preferred currency
+    if (display.textContent.includes('$')) {
+      display.textContent = formatCurrency(
+        convertCurrency(basePrice, 'USD', userCurrency),
+        userCurrency
+      );
+    } else {
+      display.textContent = formatCurrency(basePrice, 'USD');
+    }
+  }
+}
+
 function showAdminButtons() {
   document.querySelectorAll('.navbar a').forEach(link => {
     if (link.textContent.includes('Shops') || link.textContent.includes('Deals')) {
       link.style.display = 'flex'; // Changed to flex to match navbar styling
     }
   });
+}
+
+function showCurrencyPopup(usdAmount) {
+  const popupHTML = getCurrencyPopupHTML(usdAmount);
+  
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'currency-overlay';
+  overlay.innerHTML = popupHTML;
+  document.body.appendChild(overlay);
+  
+  // Setup event listeners
+  setupPopupEvents(overlay, usdAmount);
 }
 
 // Helper function to hide admin buttons
@@ -45,6 +420,16 @@ function hideAdminButtons() {
     }
   });
 }
+
+function loadPreferredCurrency() {
+  try {
+    return localStorage.getItem('preferredCurrency') || 'USD';
+  } catch (e) {
+    console.error('Error loading currency preference:', e);
+    return 'USD';
+  }
+}
+
 async function loadUserData(uid) {
   try {
     const snapshot = await database.ref(`users/${uid}`).once('value');
@@ -69,6 +454,7 @@ async function loadUserData(uid) {
     console.error("Error loading user data:", error);
   }
 }
+
 document.addEventListener('DOMContentLoaded', function() {
     // Sample product data
     const initialProducts = [
@@ -212,6 +598,7 @@ async function saveProduct(product) {
   await productRef.set(product);
   return product;
 }
+
 async function getUserByEmail(email) {
   const snapshot = await database.ref('users').orderByChild('email').equalTo(email).once('value');
   const users = snapshot.val();
@@ -319,15 +706,18 @@ let isAdmin = false;
     updateSellerButton();
     initializeCountrySelect();
     initializePaymentMethods();
+    initCurrencyConverter();
   } catch (error) {
     console.error("Initialization error:", error);
   }
 }
+
 // Admin verification function
 function verifyAdmin(code) {
     const adminCodes = ["ADMIN2023"];
     return adminCodes.includes(code);
 }
+
 // Show admin verification modal
 function showAdminVerificationModal() {
     const modal = document.createElement('div');
@@ -371,6 +761,7 @@ function showAdminVerificationModal() {
         }
     });
 }
+
 // Load all shops for admin
 // In website.js, modify the loadAdminShops function:
 
@@ -436,6 +827,7 @@ async function loadAdminShops(searchTerm = '') {
     shopsList.innerHTML = '<p>Error loading shops</p>';
   }
 }
+
 // In website.js, update these functions:
 
 // 1. Fix the trackSale function to properly update shop stats
@@ -493,6 +885,7 @@ async function trackSale(order) {
     return false;
   }
 }
+
 function validateShopUrl(url) {
   return url
     .toLowerCase()
@@ -500,6 +893,7 @@ function validateShopUrl(url) {
     .replace(/[^a-z0-9-]/g, '')
     .substring(0, 50); // Limit length
 }
+
 // In seller dashboard
 async function loadShopData() {
   const shop = await getShopByUserId(currentUser.id);
@@ -509,6 +903,7 @@ async function loadShopData() {
     document.getElementById('shop-url').value = shop.url || '';
   }
 }
+
 async function deleteShop(shopId) {
   try {
     // First get all products from this shop
@@ -539,6 +934,7 @@ async function deleteShop(shopId) {
     showSuccessModal('Error', 'Failed to delete shop. Please try again.');
   }
 }
+
 // Show shop details
 async function showShopDetails(userId) {
   const shop = await getShopByUserId(userId);
@@ -637,6 +1033,7 @@ async function showShopDetails(userId) {
   
   toggleModal(modal);
 }
+
 async function resetShopStats(shopId) {
     try {
         // Create updates object
@@ -672,6 +1069,7 @@ document.getElementById('admin-shops-search')?.addEventListener('keypress', func
         loadAdminShops(searchTerm);
     }
 });
+
     // Set up event listeners
     function setupEventListeners() {
     // Filter products
@@ -776,7 +1174,6 @@ document.getElementById('admin-shops-search')?.addEventListener('keypress', func
             showSuccessModal('Error', 'Failed to add product. Please try again.');
         }
     });
-        
         // Image upload preview
         document.getElementById('product-images').addEventListener('change', function() {
             const preview = document.getElementById('image-preview');
@@ -792,7 +1189,7 @@ document.getElementById('admin-shops-search')?.addEventListener('keypress', func
                 reader.readAsDataURL(file);
             });
         });
-        
+          document.body.addEventListener('click', handleConversionClick);
         // Add option button
         document.getElementById('add-option').addEventListener('click', addProductOption);
     }
@@ -939,9 +1336,11 @@ document.querySelector('#admin-shop-details-modal .close-modal')?.addEventListen
     toggleModal(document.getElementById('admin-shop-details-modal'));
     // The shops list modal should remain open
 });
+
 // Add these to the setupEventListeners function
 document.getElementById('show-manual-verification')?.addEventListener('click', showManualVerificationModal);
 document.getElementById('verify-manual-btn')?.addEventListener('click', verifyManualSeller);
+
 // Add this to your setupEventListeners function
 document.getElementById('show-manual-verification')?.addEventListener('click', showManualVerificationModal);
 
@@ -992,10 +1391,12 @@ async function verifyManualSeller() {
   }
 }
 }
+
 // Manual verification functions
 function showManualVerificationModal() {
     toggleModal(document.getElementById('manual-verification-modal'));
 }
+
     // Initialize country select with additional countries
     function initializeCountrySelect() {
         const countrySelect = document.getElementById('checkout-country');
@@ -1373,6 +1774,7 @@ async function submitVerificationRequest(name, email, phone, business, businessT
         return false;
     }
 }
+
 function updateSellerDashboardButton() {
     const sellerBtn = document.getElementById('seller-dashboard-btn');
     const navbar = document.querySelector('.navbar ul');
@@ -1398,6 +1800,7 @@ function updateSellerDashboardButton() {
         sellerBtn.closest('li').remove();
     }
 }
+
     // Load verification requests (admin function)
     function loadVerificationRequests() {
         const requests = JSON.parse(localStorage.getItem('verificationRequests')) || [];
@@ -1538,10 +1941,12 @@ async function saveShopSettings() {
     showSuccessModal('Error', 'Failed to save shop settings');
   }
 }
+
 async function getShopByUserId(userId) {
   const snapshot = await database.ref(`shops/${userId}`).once('value');
   return snapshot.exists() ? snapshot.val() : null;
 }
+
 async function loadSellerProducts() {
   const productsList = document.getElementById('seller-products-list');
   productsList.innerHTML = '<p>Loading products...</p>';
@@ -1876,6 +2281,7 @@ async function deleteProduct(productId) {
             optionsContainer.removeChild(optionItem);
         });
     }
+
 async function addNewProduct() {
   const form = document.getElementById('add-product-form');
   const editId = form.dataset.editId;
@@ -1955,7 +2361,7 @@ async function addNewProduct() {
       `${name} has been ${editId ? 'updated' : 'added to your shop'}`
     );
     
-    // Refresh data
+    // Refresh local data
     const snapshot = await database.ref('products').once('value');
     products = snapshot.val() ? Object.values(snapshot.val()) : [];
     
@@ -1967,6 +2373,7 @@ async function addNewProduct() {
     showSuccessModal('Error', 'Failed to save product. Please try again.');
   }
 }
+
 // Render products to the grid
 function renderProducts(productsToRender) {
   const productGrid = document.getElementById('product-grid');
@@ -1978,7 +2385,6 @@ function renderProducts(productsToRender) {
   }
 
   productsToRender.forEach((product) => {
-    // Check if product is valid
     if (!product || !product.images || !product.images.length) {
       console.warn('Invalid product data:', product);
       return;
@@ -1987,27 +2393,35 @@ function renderProducts(productsToRender) {
     const productItem = document.createElement('div');
     productItem.className = 'product-card';
 
-    // Use first image or placeholder if none exists
     const productImage = product.images[0] || 'https://placehold.co/300x300?text=No+Image';
     
-    // Check if image is Base64 or URL
     let safeImageUrl;
     if (productImage.startsWith('data:image')) {
-      safeImageUrl = productImage; // Use Base64 directly
+      safeImageUrl = productImage;
     } else if (typeof productImage === 'string' && 
               (productImage.startsWith('http') || productImage.startsWith('https'))) {
-      safeImageUrl = productImage; // Regular URL
+      safeImageUrl = productImage;
     } else {
       safeImageUrl = 'https://placehold.co/300x300?text=No+Image';
     }
     
+    // Add data-usd attribute to the price display
     productItem.innerHTML = `
-      ${product.verifiedSeller ? '<span class="product-badge">Verified</span>' : ''}
-      <img src="${safeImageUrl}" alt="${product.name || 'Product'}" class="product-image">
+      <div class="product-image-container">
+        <img src="${safeImageUrl}" alt="${product.name || 'Product'}" class="product-image">
+        ${product.verifiedSeller ? '<span class="product-badge">Verified</span>' : ''}
+      </div>
       <div class="product-info">
         <h3 class="product-title">${product.name || 'Unnamed Product'}</h3>
         <p class="product-seller">${product.seller || 'Unknown Seller'}</p>
-        <p class="product-price">$${(product.price || 0).toFixed(2)}</p>
+        <div class="product-price">
+          <span class="price-display" data-usd="${product.price || 0}">
+            ${formatCurrency(product.price || 0, 'USD')}
+          </span>
+          <button class="convert-btn" data-usd="${product.price || 0}">
+            <i class="fas fa-calculator"></i>
+          </button>
+        </div>
         <div class="product-rating">
           ${renderRatingStars(product.rating || 0)}
         </div>
@@ -2021,6 +2435,8 @@ function renderProducts(productsToRender) {
     productGrid.appendChild(productItem);
   });
 }
+
+
     // Render rating stars
     function renderRatingStars(rating) {
         let stars = '';
@@ -2178,6 +2594,7 @@ function renderProducts(productsToRender) {
     document.body.style.overflow = 'auto';
   });
 }
+
     // Show product options modal
    function showProductOptions(productId, action) {
     const product = products.find(p => p.id == productId);
@@ -2533,6 +2950,7 @@ async function handleLogin(e) {
         
         toggleModal(successModal);
     }
+
 function resetProductForm() {
     const form = document.getElementById('add-product-form');
     form.reset();
@@ -2541,6 +2959,7 @@ function resetProductForm() {
     document.getElementById('image-preview').innerHTML = '';
     document.querySelector('.product-options').innerHTML = '';
 }
+
     // Show shop page
     function showShopPage(shopId) {
         // Get shop data
@@ -2623,7 +3042,8 @@ function resetProductForm() {
         document.querySelector('.main-content').classList.remove('active');
         shopPage.classList.add('active');
     }
-   // Add these functions to the JS file
+   
+ // Add these functions to the JS file
 
 function showShopPage(shopId) {
     // Hide main content
@@ -2631,6 +3051,7 @@ function showShopPage(shopId) {
     shopPage.classList.add('active');
     renderShopPage(shopId);
 }
+
 function renderShopPage(shopId) {
     // Get shop data
     const shop = shops.find(s => s.url === shopId) || 
@@ -2715,6 +3136,7 @@ document.querySelectorAll('.shop-link').forEach(link => {
         showShopPage(shopId);
     });
 });
+
 async function removeFromCart(index) {
     if (index >= 0 && index < cart.length) {
         const productName = cart[index].product.name;
@@ -2730,6 +3152,7 @@ async function removeFromCart(index) {
         showSuccessModal('Item Removed', `${productName} has been removed from your cart.`);
     }
 }
+
 function convertToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -2750,6 +3173,7 @@ async function saveShop(shop) {
   await shopRef.set(shop);
   return shop;
 }
+
 // Initialize the app
     init();
   const db = firebase.database();    
