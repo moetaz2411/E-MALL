@@ -2028,3 +2028,54 @@ a {
   color: #666;
   font-style: italic;
 }
+/* Product card layout fix */
+.product-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.product-image-container {
+  position: relative;
+  flex-grow: 1;
+}
+
+.product-image {
+  width: 100%;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 8px 8px 0 0;
+}
+
+.product-info {
+  padding: 15px;
+  display: flex;
+  flex-direction: column;
+}
+
+.product-price {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+/* Currency converter button */
+.convert-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #2563eb;
+}
+
+/* Verified badge */
+.product-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: #10b981;
+  color: white;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
