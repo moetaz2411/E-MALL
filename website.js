@@ -126,7 +126,7 @@ const currencyConverterCSS = `
 }
 
 .popup-header {
-  background: #2563eb;
+  background: #6b5be6;
   color: white;
   padding: 16px;
   display: flex;
@@ -191,7 +191,7 @@ const currencyConverterCSS = `
 }
 
 .apply-global-btn {
-  background: #2563eb;
+  background: #6b5be6;
   color: white;
   border: none;
   border-radius: 8px;
@@ -206,7 +206,7 @@ const currencyConverterCSS = `
 }
 
 .set-default-btn {
-  background: #10b981;
+  background: #00b894;
   color: white;
   border: none;
   border-radius: 8px;
@@ -687,6 +687,16 @@ let isAdmin = false;
     // Rest of your initialization code...
     const productsSnapshot = await database.ref('products').once('value');
     products = productsSnapshot.val() ? Object.values(productsSnapshot.val()) : [];
+      if (products.length === 0) {
+      products = initialProducts.map(product => ({
+        ...product,
+        rating: (Math.random() * 1 + 4).toFixed(1) // Random between 4.0 and 5.0
+      }));
+    }
+
+    // Render products with random sorting
+    renderProducts(products);
+    
     
     const usersSnapshot = await database.ref('users').once('value');
     users = usersSnapshot.val() ? Object.values(usersSnapshot.val()) : [];
@@ -2139,6 +2149,30 @@ async function deleteProduct(productId) {
 
       const orderCard = document.createElement('div');
       orderCard.className = 'order-card';
+      
+      // Create options display HTML for each item
+      const itemsHTML = sellerItems.map(item => {
+        const optionsHTML = item.options && Object.keys(item.options).length > 0 
+          ? `<div class="item-options">
+               ${Object.entries(item.options).map(([key, value]) => 
+                 `<p><strong>${key}:</strong> ${value}</p>`).join('')}
+             </div>`
+          : '';
+        
+        return `
+          <div class="order-item">
+            <img src="${item.product.images?.[0] || 'https://placehold.co/100x100?text=No+Image'}" 
+                 alt="${item.product.name}" class="product-image">
+            <div class="item-details">
+              <p class="item-name">${item.product.name}</p>
+              ${optionsHTML}
+              <p class="item-quantity">Qty: ${item.quantity}</p>
+              <p class="item-price">$${(item.product.price * item.quantity).toFixed(2)}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+
       orderCard.innerHTML = `
         <div class="order-header">
           <span>Order #${order.id}</span>
@@ -2155,16 +2189,7 @@ async function deleteProduct(productId) {
           <p><strong>Status:</strong> <span class="status-${order.status.toLowerCase()}">${order.status}</span></p>
         </div>
         <div class="order-items">
-          ${sellerItems.map(item => `
-            <div class="order-item">
-              <img src="${item.product.images[0]}" alt="${item.product.name}">
-              <div class="item-details">
-                <p class="item-name">${item.product.name}</p>
-                <p class="item-quantity">Qty: ${item.quantity}</p>
-                <p class="item-price">$${(item.product.price * item.quantity).toFixed(2)}</p>
-              </div>
-            </div>
-          `).join('')}
+          ${itemsHTML}
         </div>
         <div class="order-total">
           <p><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</p>
@@ -2384,53 +2409,47 @@ function renderProducts(productsToRender) {
     return;
   }
 
-  productsToRender.forEach((product) => {
-    if (!product || !product.images || !product.images.length) {
-      console.warn('Invalid product data:', product);
-      return;
-    }
+  // Create a copy of the array to avoid mutating the original
+  const productsCopy = [...productsToRender];
 
+  // Assign random ratings and sort by them
+  const randomizedProducts = productsCopy.map(product => ({
+    ...product,
+    rating: (Math.random() * 1 + 4).toFixed(1) // Random between 4.0 and 5.0
+  })).sort((a, b) => b.rating - a.rating); // Sort descending by rating
+
+  randomizedProducts.forEach((product) => {
     const productItem = document.createElement('div');
     productItem.className = 'product-card';
 
     const productImage = product.images[0] || 'https://placehold.co/300x300?text=No+Image';
     
-    let safeImageUrl;
-    if (productImage.startsWith('data:image')) {
-      safeImageUrl = productImage;
-    } else if (typeof productImage === 'string' && 
-              (productImage.startsWith('http') || productImage.startsWith('https'))) {
-      safeImageUrl = productImage;
-    } else {
-      safeImageUrl = 'https://placehold.co/300x300?text=No+Image';
-    }
-    
-    // Add data-usd attribute to the price display
     productItem.innerHTML = `
-      <div class="product-image-container">
-        <img src="${safeImageUrl}" alt="${product.name || 'Product'}" class="product-image">
-        ${product.verifiedSeller ? '<span class="product-badge">Verified</span>' : ''}
-      </div>
-      <div class="product-info">
-        <h3 class="product-title">${product.name || 'Unnamed Product'}</h3>
-        <p class="product-seller">${product.seller || 'Unknown Seller'}</p>
-        <div class="product-price">
-          <span class="price-display" data-usd="${product.price || 0}">
-            ${formatCurrency(product.price || 0, 'USD')}
-          </span>
-          <button class="convert-btn" data-usd="${product.price || 0}">
-            <i class="fas fa-calculator"></i>
-          </button>
-        </div>
-        <div class="product-rating">
-          ${renderRatingStars(product.rating || 0)}
-        </div>
-        <div class="product-actions">
-          <button class="btn btn-primary view-details" data-id="${product.id || ''}">Details</button>
-          <button class="btn btn-secondary buy-now" data-id="${product.id || ''}">Buy Now</button>
-        </div>
-      </div>
-    `;
+  <div class="product-image-container">
+    <img src="${productImage}" alt="${product.name || 'Product'}" class="product-image">
+    ${product.verifiedSeller ? '<span class="verified-badge">Verified</span>' : ''}
+  </div>
+  <div class="product-info">
+    <h3 class="product-title">${product.name || 'Unnamed Product'}</h3>
+    <p class="product-seller">${product.seller || 'Unknown Seller'}</p>
+    <div class="product-price">
+      <span class="price-display" data-usd="${product.price || 0}">
+        ${formatCurrency(product.price || 0, 'USD')}
+      </span>
+      <button class="convert-btn" data-usd="${product.price || 0}">
+        <i class="fas fa-calculator"></i>
+      </button>
+    </div>
+    <div class="product-rating">
+      ${renderRatingStars(product.rating)}
+      <span>(${product.rating})</span>
+    </div>
+    <div class="product-actions">
+      <button class="btn btn-primary view-details" data-id="${product.id || ''}">Details</button>
+      <button class="btn btn-secondary buy-now" data-id="${product.id || ''}">Buy Now</button>
+    </div>
+  </div>
+`;
 
     productGrid.appendChild(productItem);
   });
@@ -2438,26 +2457,28 @@ function renderProducts(productsToRender) {
 
 
     // Render rating stars
-    function renderRatingStars(rating) {
-        let stars = '';
-        const fullStars = Math.floor(rating);
-        const hasHalfStar = rating % 1 >= 0.5;
-        
-        for (let i = 0; i < fullStars; i++) {
-            stars += '<i class="fas fa-star"></i>';
-        }
-        
-        if (hasHalfStar) {
-            stars += '<i class="fas fa-star-half-alt"></i>';
-        }
-        
-        const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
-        for (let i = 0; i < emptyStars; i++) {
-            stars += '<i class="far fa-star"></i>';
-        }
-        
-        return stars;
+   function renderRatingStars(rating) {
+    // Ensure rating is a number
+    const numericRating = typeof rating === 'string' ? parseFloat(rating) : rating;
+    let stars = '';
+    const fullStars = Math.floor(numericRating);
+    const hasHalfStar = numericRating % 1 >= 0.5;
+    
+    for (let i = 0; i < fullStars; i++) {
+        stars += '<i class="fas fa-star"></i>';
     }
+    
+    if (hasHalfStar) {
+        stars += '<i class="fas fa-star-half-alt"></i>';
+    }
+    
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+    for (let i = 0; i < emptyStars; i++) {
+        stars += '<i class="far fa-star"></i>';
+    }
+    
+    return stars;
+}
     
     // Filter products based on selected filters
     function filterProducts() {
@@ -2527,46 +2548,37 @@ function renderProducts(productsToRender) {
   modal.className = 'modal';
   modal.style.display = 'block';
   
-  // Prepare safe image URLs
-  const safeImages = product.images.map(img => {
-    if (img.startsWith('data:image')) {
-      return img; // Base64 image
-    } else if (typeof img === 'string' && (img.startsWith('http') || img.startsWith('https'))) {
-      return img; // Regular URL
-    } else {
-      return 'https://placehold.co/300x300?text=No+Image';
-    }
-  });
-  
   modal.innerHTML = `
     <div class="modal-content" style="max-width: 600px;">
       <span class="close-modal">&times;</span>
+      ${product.verifiedSeller ? '<span class="verified-badge" style="position: static; margin-bottom: 10px;">Verified</span>' : ''}
       <h2>${product.name}</h2>
       <div class="product-details">
-        <div class="product-images" style="display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto;">
-          ${safeImages.map(img => `
-            <img src="${img}" alt="${product.name}" style="max-width: 150px; height: auto; border: 1px solid #ddd; border-radius: 5px;">
-          `).join('')}
-        </div>
-        <p><strong>Seller:</strong> ${product.seller}</p>
-        <p><strong>Price:</strong> $${product.price.toFixed(2)}</p>
-        <p><strong>Rating:</strong> ${product.rating} ${renderRatingStars(product.rating)}</p>
-        <p><strong>Description:</strong> ${product.description || 'No description available.'}</p>
-        ${product.options && Object.keys(product.options).length > 0 ? `
-          <div class="product-options">
-            <h3>Options</h3>
-            ${Object.entries(product.options).map(([name, values]) => `
-              <p><strong>${name}:</strong> ${values.join(', ')}</p>
+          <div class="product-images" style="display: flex; gap: 10px; margin-bottom: 20px; overflow-x: auto;">
+            ${product.images.map(img => `
+              <img src="${img}" alt="${product.name}" style="max-width: 150px; height: auto; border: 1px solid #ddd; border-radius: 5px;">
             `).join('')}
           </div>
-        ` : ''}
+          <p><strong>Seller:</strong> ${product.seller}</p>
+          <p><strong>Price:</strong> ${formatCurrency(product.price, 'USD')}</p>
+          <p><strong>Rating:</strong> ${product.rating} ${renderRatingStars(product.rating)}</p>
+          <p><strong>Description:</strong> ${product.description || 'No description available.'}</p>
+          ${product.options && Object.keys(product.options).length > 0 ? `
+            <div class="product-options">
+              <h3>Options</h3>
+              ${Object.entries(product.options).map(([name, values]) => `
+                <p><strong>${name}:</strong> ${values.join(', ')}</p>
+              `).join('')}
+            </div>
+          ` : ''}
+        </div>
+        <div class="product-actions" style="margin-top: 20px;">
+          <button class="btn btn-primary add-to-cart-btn" data-id="${product.id}" style="width: 100%;">Add to Cart</button>
+        </div>
       </div>
-      <div class="product-actions" style="margin-top: 20px;">
-        <button class="btn btn-primary add-to-cart-btn" data-id="${product.id}" style="width: 100%;">Add to Cart</button>
-      </div>
-    </div>
   `;
   
+  // Rest of the function remains the same
   document.body.appendChild(modal);
   document.body.style.overflow = 'hidden';
   
