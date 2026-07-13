@@ -2243,3 +2243,284 @@ a {
   height: 200px;
   overflow: hidden;
 }
+/* ============================================
+   GOOGLE MAPS DELIVERY INTEGRATION STYLES
+   ============================================ */
+
+/* Delivery Map Container */
+.delivery-map-container {
+    margin: 20px 0;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid var(--light-gray);
+}
+
+.delivery-map-container #delivery-map {
+    height: 300px;
+    width: 100%;
+}
+
+.delivery-map-controls {
+    display: flex;
+    gap: 10px;
+    padding: 15px;
+    background: #f8f9fa;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.delivery-map-controls .search-input {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid var(--light-gray);
+    border-radius: 5px;
+    min-width: 200px;
+}
+
+.delivery-map-controls .btn {
+    padding: 10px 20px;
+    white-space: nowrap;
+}
+
+.delivery-map-controls .btn-success {
+    background: var(--success-color);
+    color: white;
+}
+
+.delivery-map-controls .btn-success:hover {
+    opacity: 0.9;
+}
+
+.delivery-location-info {
+    background: #f0f7ff;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+    border-left: 4px solid var(--primary-color);
+}
+
+.delivery-location-info p {
+    margin: 5px 0;
+}
+
+.delivery-location-info .address {
+    font-weight: 500;
+    color: var(--dark-color);
+}
+
+.delivery-location-info .coordinates {
+    font-size: 0.9rem;
+    color: var(--gray-color);
+}
+
+/* Route Info */
+.route-info {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.route-info .distance {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.route-info .duration {
+    font-weight: 600;
+    color: var(--success-color);
+}
+
+/* Seller Delivery Address Display */
+.seller-delivery-address {
+    background: #fff3e0;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 10px 0;
+    border-left: 4px solid #ff9800;
+}
+
+.seller-delivery-address .label {
+    font-weight: 600;
+    color: #e65100;
+}
+
+/* Location Picker Button */
+.pick-location-btn {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 8px 15px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.pick-location-btn:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .delivery-map-controls {
+        flex-direction: column;
+    }
+    
+    .delivery-map-controls .search-input {
+        width: 100%;
+    }
+    
+    .delivery-map-controls .btn {
+        width: 100%;
+    }
+}
+/* Custom marker styles */
+.custom-marker {
+    background: none !important;
+    border: none !important;
+}
+
+/* Delivery map controls */
+.delivery-map-container {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid #e0e0e0;
+    margin: 10px 0;
+}
+
+.delivery-map-controls {
+    display: flex;
+    gap: 10px;
+    padding: 12px;
+    background: #f8f9fa;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.delivery-map-controls .search-input {
+    flex: 1;
+    padding: 10px 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    min-width: 200px;
+    font-size: 14px;
+}
+
+.delivery-map-controls .btn {
+    padding: 10px 20px;
+    white-space: nowrap;
+}
+
+/* Leaflet control overrides */
+.leaflet-control-geocoder {
+    border-radius: 5px !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+}
+
+.leaflet-control-geocoder-input {
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+}
+
+.leaflet-control-locate {
+    border-radius: 5px !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+}
+
+/* Route map */
+#route-map {
+    height: 250px;
+    width: 100%;
+    border-radius: 8px;
+    margin: 10px 0;
+    border: 1px solid #e0e0e0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .delivery-map-controls {
+        flex-direction: column;
+    }
+    
+    .delivery-map-controls .search-input {
+        width: 100%;
+    }
+    
+    .delivery-map-controls .btn {
+        width: 100%;
+    }
+}
+/* Force leaflet map to show */
+#delivery-map {
+    min-height: 300px !important;
+    height: 300px !important;
+    width: 100% !important;
+    display: block !important;
+    background: #f0f0f0 !important;
+}
+
+.leaflet-control-geocoder {
+    z-index: 1000 !important;
+}
+
+.leaflet-control-locate {
+    z-index: 1000 !important;
+}
+/* ============================================
+   SATELLITE VIEW TOGGLE BUTTON
+   ============================================ */
+
+.leaflet-control-satellite {
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    padding: 4px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    transition: all 0.3s ease;
+    border: 2px solid rgba(0,0,0,0.2);
+    background: white;
+}
+
+.leaflet-control-satellite:hover {
+    background: #f0f0f0;
+}
+
+.leaflet-control-satellite.active {
+    background: #6b5be6;
+    border-color: #6b5be6;
+}
+
+.leaflet-control-satellite.active i {
+    color: white;
+}
+
+.leaflet-control-satellite i {
+    font-size: 18px;
+    color: #333;
+}
+/* Route map layer control */
+.leaflet-control-layers {
+    border-radius: 5px !important;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
+}
+
+.leaflet-control-layers label {
+    font-family: 'Poppins', sans-serif !important;
+    font-size: 13px !important;
+}
+
+/* Fix route map height */
+#route-map {
+    height: 250px !important;
+    width: 100% !important;
+    border-radius: 8px !important;
+    border: 1px solid #e0e0e0 !important;
+}
