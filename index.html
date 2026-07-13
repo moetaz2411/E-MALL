@@ -8,14 +8,32 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    
+    <!-- REMOVE THIS LINE: -->
+    <!-- <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places&callback=initMap" async defer></script> -->
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet Geocoder for address search (FREE) -->
+    <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
+    <!-- Leaflet Routing Machine for route calculation (FREE) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+    <!-- Leaflet Locate Control for "Use My Location" -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.css" />
+    <script src="https://unpkg.com/leaflet.locatecontrol@0.79.0/dist/L.Control.Locate.min.js"></script>
+    
     <script>
-  (function() {
-    emailjs.init({
-      publicKey: "VwtS6_h8VTDHglzyH",
-      blockHeadless: true,
-    });
-  })();
-</script>
+    (function() {
+        emailjs.init({
+            publicKey: "VwtS6_h8VTDHglzyH",
+            blockHeadless: true,
+        });
+    })();
+    </script>
 </head>
 <body>
     <!-- Gradient Background -->
@@ -312,7 +330,18 @@
                     <p>No orders yet.</p>
                 </div>
             </div>
-            
+            <!-- Add this in the orders tab content, inside #orders .orders-list -->
+<div id="order-route-display" style="display: none;">
+    <div class="route-info">
+        <h4><i class="fas fa-route"></i> Delivery Route</h4>
+        <div id="route-map" style="height: 250px; width: 100%; border-radius: 8px; margin: 10px 0;"></div>
+        <p><strong>Distance:</strong> <span class="distance" id="route-distance">Calculating...</span></p>
+        <p><strong>Estimated Duration:</strong> <span class="duration" id="route-duration">Calculating...</span></p>
+        <button class="btn btn-primary" id="open-google-maps-btn">
+            <i class="fas fa-external-link-alt"></i> Open in Google Maps
+        </button>
+    </div>
+</div>
             <div class="tab-content" id="shop-settings">
                 <form id="shop-settings-form">
                     <div class="form-group">
@@ -323,6 +352,11 @@
                         <label for="shop-description">Description</label>
                         <textarea id="shop-description" rows="4" required></textarea>
                     </div>
+                     <div class="form-group">
+            <label for="shop-address">Shop Address</label>
+            <input type="text" id="shop-address" placeholder="Enter your shop's physical address">
+            <small style="color: var(--gray-color);">This will be used to calculate delivery routes</small>
+        </div>
                     <div class="form-group">
                         <label for="shop-logo">Shop Logo</label>
                         <input type="file" id="shop-logo" accept="image/*">
@@ -400,7 +434,32 @@
                             <!-- More countries can be added -->
                         </select>
                     </div>
-                    
+                    <!-- Add this inside the checkout-details div, after the country select -->
+<!-- Delivery Location Picker (FREE) -->
+<div class="form-group">
+    <label>Delivery Location <span style="color: red;">*</span></label>
+    <div class="delivery-map-container">
+        <div id="delivery-map" style="height: 350px; width: 100%; border-radius: 10px;"></div>
+        <div class="delivery-map-controls">
+            <input type="text" id="delivery-search" class="search-input" 
+                   placeholder="Search for an address...">
+            <button type="button" class="btn btn-secondary" id="use-current-location-btn">
+                <i class="fas fa-location-arrow"></i> My Location
+            </button>
+            <button type="button" class="btn btn-success" id="confirm-delivery-location">
+                <i class="fas fa-check"></i> Confirm
+            </button>
+        </div>
+    </div>
+    <div id="delivery-location-info" class="delivery-location-info" style="display: none;">
+        <p><i class="fas fa-map-pin"></i> <strong>Delivery Address:</strong> 
+           <span class="address" id="delivery-address">Not set</span></p>
+        <p class="coordinates" id="delivery-coords">Lat: 0.0000, Lng: 0.0000</p>
+    </div>
+    <input type="hidden" id="delivery-lat" value="">
+    <input type="hidden" id="delivery-lng" value="">
+    <input type="hidden" id="delivery-formatted-address" value="">
+</div>
                     <h3>Payment Method</h3>
                     <div class="payment-methods">
                         <label class="payment-method">
@@ -568,3 +627,4 @@
 </div>
 </body>
 </html>
+
