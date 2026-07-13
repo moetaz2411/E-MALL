@@ -1914,42 +1914,64 @@ function updateSellerDashboardButton() {
     // ===== SHOP MANAGEMENT FUNCTIONS =====
 
 // Save shop settings
+// Save shop settings (with address geocoding)
 async function saveShopSettings() {
-  if (!currentUser?.verifiedSeller) return;
-  
-  const name = document.getElementById('shop-name').value;
-  const description = document.getElementById('shop-description').value;
-  const url = validateShopUrl(document.getElementById('shop-url').value);
-  
-  // Create shop object with user ID as key
-  const shopData = {
-    id: currentUser.id,
-    owner: currentUser.id,
-    name,
-    url,
-    description,
-    ownerEmail: currentUser.email,
-    verified: true,
-    createdAt: new Date().toISOString(),
-    totalSales: 0,
-    totalRevenue: 0,
-    totalCommission: 0
-  };
+    if (!currentUser?.verifiedSeller) return;
+    
+    const name = document.getElementById('shop-name').value;
+    const description = document.getElementById('shop-description').value;
+    const url = validateShopUrl(document.getElementById('shop-url').value);
+    const address = document.getElementById('shop-address')?.value || '';
+    
+    let lat = null;
+    let lng = null;
+    
+    // Try to geocode the address
+    if (address) {
+        try {
+            const response = await fetch(
+                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`
+            );
+            const data = await response.json();
+            if (data && data.length > 0) {
+                lat = parseFloat(data[0].lat);
+                lng = parseFloat(data[0].lon);
+                showSuccessModal('Address Found', 'Your shop location has been mapped. Customers can now find you!');
+            } else {
+                showSuccessModal('Address Not Found', 'We could not map your address. Please enter a more specific address.');
+            }
+        } catch (error) {
+            console.error('Geocoding error:', error);
+        }
+    }
+    
+    const shopData = {
+        id: currentUser.id,
+        owner: currentUser.id,
+        name,
+        url,
+        description,
+        address: address || '',
+        lat: lat,
+        lng: lng,
+        ownerEmail: currentUser.email,
+        verified: true,
+        createdAt: new Date().toISOString(),
+        totalSales: 0,
+        totalRevenue: 0,
+        totalCommission: 0
+    };
 
-  try {
-    // Save shop under user ID
-    await database.ref(`shops/${currentUser.id}`).set(shopData);
-    
-    // Update user record
-    currentUser.shopName = name;
-    currentUser.shopUrl = url;
-    await saveUser(currentUser);
-    
-    showSuccessModal('Shop Updated', 'Your shop settings have been saved.');
-  } catch (error) {
-    console.error("Error saving shop:", error);
-    showSuccessModal('Error', 'Failed to save shop settings');
-  }
+    try {
+        await database.ref(`shops/${currentUser.id}`).set(shopData);
+        currentUser.shopName = name;
+        currentUser.shopUrl = url;
+        await saveUser(currentUser);
+        showSuccessModal('Shop Updated', 'Your shop settings have been saved.');
+    } catch (error) {
+        console.error("Error saving shop:", error);
+        showSuccessModal('Error', 'Failed to save shop settings');
+    }
 }
 
 async function getShopByUserId(userId) {
@@ -3188,5 +3210,881 @@ async function saveShop(shop) {
 
 // Initialize the app
     init();
-  const db = firebase.database();    
+  const db = firebase.database();   
+// ============================================================
+// COMPLETE DELIVERY SYSTEM - FIXED (No duplicate variables)
+// ============================================================
+
+let deliveryMap = null;
+let deliveryMarker = null;
+let deliveryCircle = null;
+let selectedLocation = null;
+let routingControl = null;
+let mapInitialized = false;
+
+// Destroy any existing route map
+function destroyRouteMap() {
+    if (window._routeMapInstance) {
+        try {
+            window._routeMapInstance.remove();
+        } catch (e) {}
+        window._routeMapInstance = null;
+    }
+    if (routingControl) {
+        try {
+            routingControl.remove();
+        } catch (e) {}
+        routingControl = null;
+    }
+    // Clear the container content to be safe
+    const container = document.getElementById('route-map');
+    if (container) {
+        container.innerHTML = '';
+    }
+}
+
+// --- 1. INITIALIZE DELIVERY MAP ---
+// --- 1. INITIALIZE DELIVERY MAP WITH SATELLITE TOGGLE ---
+function initDeliveryMap() {
+    console.log('initDeliveryMap called');
+    const mapElement = document.getElementById('delivery-map');
+    if (!mapElement) {
+        console.error('Map element not found');
+        return;
+    }
+
+    if (mapInitialized) {
+        console.log('Map already initialized, invalidating size');
+        if (deliveryMap) {
+            setTimeout(() => deliveryMap.invalidateSize(), 300);
+        }
+        return;
+    }
+
+    try {
+        console.log('Creating new map...');
+        
+        // Create the map
+        deliveryMap = L.map('delivery-map', {
+            center: [34.802, 10.179],
+            zoom: 12,
+            zoomControl: true
+        });
+
+        // --- STREET VIEW (default) ---
+        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        });
+
+        // --- SATELLITE VIEW (FREE - Esri World Imagery) ---
+        const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
+        });
+
+        // Add street layer by default
+        streetLayer.addTo(deliveryMap);
+        deliveryMap.streetLayer = streetLayer;
+        deliveryMap.satelliteLayer = satelliteLayer;
+        deliveryMap.currentView = 'street';
+
+        // --- ADD SATELLITE TOGGLE BUTTON ---
+        const satelliteControl = L.Control.extend({
+            options: { position: 'topright' },
+            onAdd: function(map) {
+                const container = L.DomUtil.create('div', 'leaflet-control-satellite');
+                container.innerHTML = '<i class="fas fa-satellite"></i>';
+                container.title = 'Toggle Satellite View';
+                
+                L.DomEvent.on(container, 'click', function() {
+                    toggleSatelliteView(map);
+                });
+                
+                return container;
+            }
+        });
+
+        deliveryMap.addControl(new satelliteControl());
+
+        // --- Toggle function ---
+        function toggleSatelliteView(map) {
+            const isSatellite = map.currentView === 'satellite';
+            
+            if (isSatellite) {
+                // Switch to street view
+                map.removeLayer(map.satelliteLayer);
+                map.streetLayer.addTo(map);
+                map.currentView = 'street';
+                document.querySelector('.leaflet-control-satellite')?.classList.remove('active');
+            } else {
+                // Switch to satellite view
+                map.removeLayer(map.streetLayer);
+                map.satelliteLayer.addTo(map);
+                map.currentView = 'satellite';
+                document.querySelector('.leaflet-control-satellite')?.classList.add('active');
+            }
+            
+            // Refresh map size
+            setTimeout(() => map.invalidateSize(), 100);
+        }
+
+        // Store toggle function on map object for later use
+        deliveryMap.toggleSatellite = toggleSatelliteView;
+
+        // --- Continue with existing setup ---
+        try {
+            const geocoder = L.Control.Geocoder.nominatim();
+            const geocoderControl = L.Control.geocoder({
+                geocoder: geocoder,
+                defaultMarkGeocode: false,
+                position: 'topright',
+                placeholder: 'Search for an address...',
+                errorMessage: 'Address not found. Please try again.'
+            }).addTo(deliveryMap);
+
+            geocoderControl.on('markgeocode', function(e) {
+                const location = e.geocode.center;
+                const address = e.geocode.name;
+                deliveryMap.setView(location, 16);
+                setDeliveryLocation(location.lat, location.lng, address);
+            });
+        } catch (e) {
+            console.warn('Geocoder not available:', e);
+        }
+
+        try {
+            L.control.locate({
+                position: 'topright',
+                strings: { title: 'Show my location' },
+                locateOptions: { enableHighAccuracy: true, timeout: 10000 }
+            }).addTo(deliveryMap);
+        } catch (e) {
+            console.warn('Locate control not available:', e);
+        }
+
+        deliveryMap.on('click', function(e) {
+            setDeliveryLocation(e.latlng.lat, e.latlng.lng);
+        });
+
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    const lat = position.coords.latitude;
+                    const lng = position.coords.longitude;
+                    deliveryMap.setView([lat, lng], 15);
+                    setDeliveryLocation(lat, lng);
+                },
+                function() { console.log('Geolocation failed'); }
+            );
+        }
+
+        mapInitialized = true;
+        console.log('Map created successfully');
+
+        setTimeout(() => {
+            if (deliveryMap) deliveryMap.invalidateSize();
+        }, 500);
+
+        setupDeliveryEvents();
+
+    } catch (error) {
+        console.error('Error initializing map:', error);
+    }
+}
+
+// --- 2. SET DELIVERY LOCATION ---
+function setDeliveryLocation(lat, lng, address) {
+    selectedLocation = { lat, lng };
+    document.getElementById('delivery-lat').value = lat;
+    document.getElementById('delivery-lng').value = lng;
+
+    if (deliveryMarker) {
+        deliveryMarker.setLatLng([lat, lng]);
+    } else {
+        const icon = L.divIcon({
+            className: 'custom-marker',
+            html: '<div style="background: #6b5be6; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"></div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+        deliveryMarker = L.marker([lat, lng], { draggable: true, icon: icon }).addTo(deliveryMap);
+        deliveryMarker.on('dragend', function(e) {
+            const pos = e.target.getLatLng();
+            setDeliveryLocation(pos.lat, pos.lng);
+        });
+    }
+
+    if (deliveryCircle) {
+        deliveryCircle.setLatLng([lat, lng]);
+    } else {
+        deliveryCircle = L.circle([lat, lng], {
+            radius: 200,
+            color: '#6b5be6',
+            fillColor: '#6b5be6',
+            fillOpacity: 0.1,
+            weight: 2
+        }).addTo(deliveryMap);
+    }
+
+    if (!address) {
+        reverseGeocode(lat, lng);
+    } else {
+        updateAddressDisplay(address, lat, lng);
+    }
+}
+
+// --- 3. REVERSE GEOCODING ---
+function reverseGeocode(lat, lng) {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+    fetch(url, { headers: { 'User-Agent': 'MallHub Delivery System' } })
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.display_name) {
+                const address = data.display_name;
+                updateAddressDisplay(address, lat, lng);
+                if (data.address) {
+                    const addr = data.address;
+                    if (addr.road || addr.street) {
+                        const streetField = document.getElementById('checkout-address');
+                        if (streetField) streetField.value = [addr.house_number, addr.road || addr.street].filter(Boolean).join(' ');
+                    }
+                    if (addr.city || addr.town || addr.village) {
+                        const cityField = document.getElementById('checkout-city');
+                        if (cityField) cityField.value = addr.city || addr.town || addr.village;
+                    }
+                    if (addr.postcode) {
+                        const zipField = document.getElementById('checkout-zip');
+                        if (zipField) zipField.value = addr.postcode;
+                    }
+                    if (addr.country) {
+                        const countrySelect = document.getElementById('checkout-country');
+                        if (countrySelect) {
+                            for (let option of countrySelect.options) {
+                                if (option.text.toLowerCase().includes(addr.country.toLowerCase())) {
+                                    countrySelect.value = option.value;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                updateAddressDisplay('Address not found', lat, lng);
+            }
+        })
+        .catch(error => {
+            console.error('Geocoding error:', error);
+            updateAddressDisplay('Unable to fetch address', lat, lng);
+        });
+}
+
+// --- 4. UPDATE ADDRESS DISPLAY ---
+function updateAddressDisplay(address, lat, lng) {
+    const addressEl = document.getElementById('delivery-address');
+    const formattedEl = document.getElementById('delivery-formatted-address');
+    const infoEl = document.getElementById('delivery-location-info');
+    const coordsEl = document.getElementById('delivery-coords');
+    if (addressEl) addressEl.textContent = address;
+    if (formattedEl) formattedEl.value = address;
+    if (infoEl) infoEl.style.display = 'block';
+    if (coordsEl) coordsEl.textContent = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+}
+
+// --- 5. SETUP DELIVERY EVENTS ---
+function setupDeliveryEvents() {
+    const locationBtn = document.getElementById('use-current-location-btn');
+    if (locationBtn) {
+        locationBtn.addEventListener('click', function() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    function(position) {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        if (deliveryMap) {
+                            deliveryMap.setView([lat, lng], 16);
+                            setDeliveryLocation(lat, lng);
+                            showSuccessModal('Location Found', 'Your current location has been set.');
+                        }
+                    },
+                    function() { showSuccessModal('Error', 'Unable to get your location. Please click on the map.'); }
+                );
+            } else {
+                showSuccessModal('Not Supported', 'Geolocation is not supported by your browser.');
+            }
+        });
+    }
+
+    const confirmBtn = document.getElementById('confirm-delivery-location');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', function() {
+            if (selectedLocation) {
+                const address = document.getElementById('delivery-address')?.textContent || 'Location set';
+                showSuccessModal('Location Confirmed', `Delivery location confirmed: ${address}`);
+            } else {
+                showSuccessModal('Error', 'Please select a delivery location on the map first.');
+            }
+        });
+    }
+
+    const searchInput = document.getElementById('delivery-search');
+    if (searchInput) {
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                const query = this.value.trim();
+                if (query) searchAddress(query);
+            }
+        });
+    }
+}
+
+// --- 6. SEARCH ADDRESS ---
+function searchAddress(query) {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+    fetch(url, { headers: { 'User-Agent': 'MallHub Delivery System' } })
+        .then(response => response.json())
+        .then(data => {
+            if (data && data.length > 0) {
+                const result = data[0];
+                const lat = parseFloat(result.lat);
+                const lng = parseFloat(result.lon);
+                if (deliveryMap) {
+                    deliveryMap.setView([lat, lng], 16);
+                    setDeliveryLocation(lat, lng, result.display_name);
+                }
+            } else {
+                showSuccessModal('Not Found', 'Address not found. Please try a different search.');
+            }
+        })
+        .catch(error => {
+            console.error('Search error:', error);
+            showSuccessModal('Error', 'Search failed. Please try again.');
+        });
+}
+
+// --- 7. SHOW DELIVERY ROUTE FOR SELLER ---
+// --- 7. SHOW DELIVERY ROUTE FOR SELLER (FIXED) ---
+// --- 7. SHOW DELIVERY ROUTE FOR SELLER (FIXED - No duplicate map) ---
+function showDeliveryRoute(order) {
+    console.log('showDeliveryRoute called', order);
+    
+    if (!order || !order.delivery || !order.delivery.lat || !order.delivery.lng) {
+        console.warn('No delivery location in order');
+        document.getElementById('order-route-display').style.display = 'none';
+        showSuccessModal('Error', 'No delivery location found for this order.');
+        return;
+    }
+
+    const routeDisplay = document.getElementById('order-route-display');
+    routeDisplay.style.display = 'block';
+
+    const deliveryLat = order.delivery.lat;
+    const deliveryLng = order.delivery.lng;
+    const shopId = order.shopId || (order.items && order.items[0] && order.items[0].shopId);
+
+    if (!shopId) {
+        console.warn('No shop ID found in order');
+        showDeliveryPointOnly(deliveryLat, deliveryLng);
+        showSuccessModal('Shop Location Missing', 'The seller has not set their shop location. Showing delivery point only.');
+        return;
+    }
+
+    // Get seller's shop location
+    getShopLocation(shopId).then(function(shopLocation) {
+        console.log('Shop location:', shopLocation);
+        
+        if (!shopLocation) {
+            console.warn('Shop location not set');
+            showDeliveryPointOnly(deliveryLat, deliveryLng);
+            showSuccessModal('Shop Location Missing', 'Please set your shop location in Shop Settings to see the route.');
+            return;
+        }
+
+        // --- DESTROY ANY EXISTING MAP BEFORE CREATING A NEW ONE ---
+        destroyRouteMap();
+
+        const routeMapElement = document.getElementById('route-map');
+        if (!routeMapElement) {
+            console.error('Route map element not found');
+            return;
+        }
+
+        // Create the route map
+        const routeMap = L.map('route-map').setView([shopLocation.lat, shopLocation.lng], 12);
+        window._routeMapInstance = routeMap; // Store for later destruction
+
+        // Street view
+        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(routeMap);
+
+        // Satellite view
+        const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
+        });
+
+        // Layer control to switch views
+        L.control.layers({
+            "Street": streetLayer,
+            "Satellite": satLayer
+        }).addTo(routeMap);
+
+        // --- Markers ---
+        const shopIcon = L.divIcon({
+            html: '<div style="background: #00b894; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; font-weight: bold;">S</div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+
+        const deliveryIcon = L.divIcon({
+            html: '<div style="background: #d63031; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; font-weight: bold;">D</div>',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+        });
+
+        L.marker([shopLocation.lat, shopLocation.lng], { icon: shopIcon })
+            .addTo(routeMap)
+            .bindPopup('<strong>Your Shop</strong><br>Starting point');
+
+        L.marker([deliveryLat, deliveryLng], { icon: deliveryIcon })
+            .addTo(routeMap)
+            .bindPopup('<strong>Delivery Location</strong><br>Destination');
+
+        // --- Calculate route ---
+        const waypoints = [
+            L.latLng(shopLocation.lat, shopLocation.lng),
+            L.latLng(deliveryLat, deliveryLng)
+        ];
+
+        const distEl = document.getElementById('route-distance');
+        const durEl = document.getElementById('route-duration');
+        if (distEl) distEl.textContent = 'Calculating...';
+        if (durEl) durEl.textContent = 'Calculating...';
+
+        let routeCalculated = false;
+
+        try {
+            routingControl = L.Routing.control({
+                waypoints: waypoints,
+                routeWhileDragging: false,
+                showAlternatives: false,
+                lineOptions: { styles: [{ color: '#6b5be6', weight: 5, opacity: 0.8 }] },
+                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+                createMarker: function() { return null; }
+            }).addTo(routeMap);
+
+            routingControl.on('routesfound', function(e) {
+                const routes = e.routes;
+                if (routes && routes.length > 0) {
+                    const summary = routes[0].summary;
+                    if (summary) {
+                        const distance = summary.totalDistance / 1000;
+                        const duration = summary.totalTime / 60;
+                        if (distEl) distEl.textContent = distance.toFixed(1) + ' km';
+                        if (durEl) durEl.textContent = Math.round(duration) + ' minutes';
+                        routeCalculated = true;
+                    }
+                }
+            });
+
+            // Fallback if route doesn't load after 10s
+            setTimeout(function() {
+                if (!routeCalculated) {
+                    // Draw straight line
+                    const latlngs = [
+                        [shopLocation.lat, shopLocation.lng],
+                        [deliveryLat, deliveryLng]
+                    ];
+                    L.polyline(latlngs, { color: '#6b5be6', weight: 3, dashArray: '5, 10' })
+                        .addTo(routeMap)
+                        .bindPopup('Direct line (route unavailable)');
+                    const dist = calculateDistance(shopLocation.lat, shopLocation.lng, deliveryLat, deliveryLng);
+                    if (distEl) distEl.textContent = dist.toFixed(1) + ' km (approx)';
+                    if (durEl) durEl.textContent = 'Route unavailable';
+                    
+                    const bounds = L.latLngBounds([shopLocation, deliveryLat, deliveryLng]);
+                    routeMap.fitBounds(bounds, { padding: [50, 50] });
+                }
+            }, 10000);
+
+        } catch (error) {
+            console.error('Routing error:', error);
+            // Fallback straight line
+            const latlngs = [
+                [shopLocation.lat, shopLocation.lng],
+                [deliveryLat, deliveryLng]
+            ];
+            L.polyline(latlngs, { color: '#6b5be6', weight: 3, dashArray: '5, 10' })
+                .addTo(routeMap)
+                .bindPopup('Direct line (route service unavailable)');
+            const dist = calculateDistance(shopLocation.lat, shopLocation.lng, deliveryLat, deliveryLng);
+            if (distEl) distEl.textContent = dist.toFixed(1) + ' km (approx)';
+            if (durEl) durEl.textContent = 'Route unavailable';
+            const bounds = L.latLngBounds([shopLocation, deliveryLat, deliveryLng]);
+            routeMap.fitBounds(bounds, { padding: [50, 50] });
+        }
+
+        // --- Open in Google Maps ---
+        const mapsBtn = document.getElementById('open-google-maps-btn');
+        if (mapsBtn) {
+            mapsBtn.onclick = function() {
+                const url = `https://www.google.com/maps/dir/${shopLocation.lat},${shopLocation.lng}/${deliveryLat},${deliveryLng}`;
+                window.open(url, '_blank');
+            };
+        }
+
+        // Fit bounds to show both points
+        try {
+            const bounds = L.latLngBounds([
+                [shopLocation.lat, shopLocation.lng],
+                [deliveryLat, deliveryLng]
+            ]);
+            routeMap.fitBounds(bounds, { padding: [50, 50] });
+        } catch (e) {}
+
+        // Refresh map after a moment
+        setTimeout(() => routeMap.invalidateSize(), 300);
+
+    }).catch(function(error) {
+        console.error('Error getting shop location:', error);
+        showDeliveryPointOnly(deliveryLat, deliveryLng);
+        showSuccessModal('Error', 'Could not load shop location. Please set your shop location in Settings.');
+    });
+}
+
+// Helper: Calculate distance between two coordinates (Haversine)
+function calculateDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+}
+
+// --- 8. SHOW DELIVERY POINT ONLY ---
+// --- 8. SHOW DELIVERY POINT ONLY (FIXED - no duplicate map) ---
+function showDeliveryPointOnly(lat, lng) {
+    // Destroy existing map first
+    destroyRouteMap();
+
+    const routeMapElement = document.getElementById('route-map');
+    if (!routeMapElement) return;
+
+    const routeMap = L.map('route-map').setView([lat, lng], 13);
+    window._routeMapInstance = routeMap;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(routeMap);
+
+    const deliveryIcon = L.divIcon({
+        html: '<div style="background: #d63031; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+    });
+
+    L.marker([lat, lng], { icon: deliveryIcon })
+        .addTo(routeMap)
+        .bindPopup('Delivery Location');
+
+    const distEl = document.getElementById('route-distance');
+    const durEl = document.getElementById('route-duration');
+    if (distEl) distEl.textContent = 'Shop location not set';
+    if (durEl) durEl.textContent = 'N/A';
+
+    setTimeout(() => routeMap.invalidateSize(), 300);
+}
+
+// --- 9. GET SHOP LOCATION ---
+async function getShopLocation(shopId) {
+    try {
+        const snapshot = await database.ref('shops/' + shopId).once('value');
+        const shop = snapshot.val();
+        if (shop && shop.lat && shop.lng) {
+            return { lat: shop.lat, lng: shop.lng };
+        }
+        return null;
+    } catch (error) {
+        console.error('Error getting shop location:', error);
+        return null;
+    }
+}
+
+// --- 10. INITIALIZE MAP ONLY WHEN MODAL OPENS ---
+function initializeMapOnModalOpen() {
+    const modal = document.getElementById('checkout-modal');
+    if (!modal || modal.style.display !== 'block') {
+        console.log('Modal not open, waiting...');
+        return;
+    }
+    if (mapInitialized && deliveryMap) {
+        console.log('Map already exists, resizing');
+        setTimeout(() => { if (deliveryMap) deliveryMap.invalidateSize(); }, 300);
+        return;
+    }
+    setTimeout(function() {
+        const modalCheck = document.getElementById('checkout-modal');
+        if (modalCheck && modalCheck.style.display === 'block') {
+            initDeliveryMap();
+        }
+    }, 500);
+}
+
+// --- 11. EVENT LISTENERS (using existing cartBtn variable) ---
+// cartBtn is already defined earlier in the file (const cartBtn = document.getElementById('cart-btn');)
+// So we just add the listener to it.
+if (typeof cartBtn !== 'undefined' && cartBtn) {
+    cartBtn.addEventListener('click', function(e) {
+        setTimeout(function() {
+            initializeMapOnModalOpen();
+        }, 300);
+    });
+}
+
+// Watch for modal opening via style changes
+// Use the already declared checkoutModal (line ~520)
+if (typeof checkoutModal !== 'undefined' && checkoutModal) {
+    const observer = new MutationObserver(function() {
+        if (checkoutModal.style.display === 'block') {
+            console.log('Modal opened via observer');
+            initializeMapOnModalOpen();
+        }
+    });
+    observer.observe(checkoutModal, { attributes: true, attributeFilter: ['style'] });
+}
+
+// --- 12. MODIFIED CHECKOUT PROCESS ---
+// Replace the existing processCheckout function with this version
+async function processCheckout() {
+    const name = document.getElementById('checkout-name').value.trim();
+    const email = document.getElementById('checkout-email').value.trim();
+    const phone = document.getElementById('checkout-phone').value.trim();
+    const address = document.getElementById('checkout-address').value.trim();
+    const city = document.getElementById('checkout-city').value.trim();
+    const zip = document.getElementById('checkout-zip').value.trim();
+    const country = document.getElementById('checkout-country').value;
+    const paymentMethod = document.querySelector('input[name="payment"]:checked')?.value;
+
+    const deliveryLat = document.getElementById('delivery-lat').value;
+    const deliveryLng = document.getElementById('delivery-lng').value;
+    const deliveryAddress = document.getElementById('delivery-formatted-address').value || address;
+
+    if (!name || !email || !phone || !address || !city || !zip || !country || !paymentMethod) {
+        showSuccessModal('Error', 'Please complete all required fields.');
+        return;
+    }
+    if (!deliveryLat || !deliveryLng) {
+        showSuccessModal('Error', 'Please select a delivery location on the map.');
+        return;
+    }
+
+    const newOrder = {
+        id: 'ORD-' + Date.now(),
+        date: new Date().toISOString(),
+        customer: { name, email, phone, shippingAddress: { address, city, zip, country } },
+        delivery: { lat: parseFloat(deliveryLat), lng: parseFloat(deliveryLng), address: deliveryAddress },
+        items: [],
+        paymentMethod,
+        status: paymentMethod === 'cash-on-delivery' ? 'Pending Payment' : 'Processing',
+        total: 0
+    };
+
+    const shopGroups = {};
+    cart.forEach(item => {
+        const shopId = item.product.sellerId;
+        if (!shopGroups[shopId]) shopGroups[shopId] = [];
+        shopGroups[shopId].push(item);
+    });
+
+    for (const shopId in shopGroups) {
+        const items = shopGroups[shopId];
+        const shopTotal = items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+        newOrder.items.push({
+            shopId,
+            shopName: items[0].product.seller || 'Unknown Shop',
+            items: items.map(item => ({
+                product: {
+                    id: item.product.id,
+                    name: item.product.name,
+                    price: item.product.price,
+                    images: item.product.images,
+                    seller: item.product.seller,
+                    sellerId: item.product.sellerId
+                },
+                options: item.options,
+                quantity: item.quantity
+            })),
+            subtotal: shopTotal
+        });
+        newOrder.total += shopTotal;
+    }
+
+    await database.ref('orders/' + newOrder.id).set(newOrder);
+    await trackSale(newOrder);
+
+    cart = [];
+    if (currentUser) await updateCart(currentUser.id, []);
+    updateCartCount();
+
+    showSuccessModal(
+        'Order Confirmed! 🎉',
+        `Your order #${newOrder.id} has been placed successfully.\n\n📍 Delivery Location: ${deliveryAddress}\n\nYou'll receive a confirmation email shortly.`
+    );
+    toggleModal(checkoutModal);
+}
+
+// --- 13. MODIFIED LOAD SELLER ORDERS ---
+async function loadSellerOrders() {
+    const ordersList = document.querySelector('#orders .orders-list');
+    if (!ordersList) return;
+    ordersList.innerHTML = '<p>Loading orders...</p>';
+
+    if (!currentUser?.verifiedSeller) {
+        ordersList.innerHTML = '<p>No seller account</p>';
+        return;
+    }
+
+    try {
+        const snapshot = await database.ref('orders').once('value');
+        const allOrders = snapshot.val() ? Object.values(snapshot.val()) : [];
+
+        const sellerOrders = allOrders.filter(order => {
+            return order.items && order.items.some(itemGroup => {
+                return itemGroup.items && itemGroup.items.some(item => {
+                    return item.product && item.product.sellerId === currentUser.id;
+                });
+            });
+        });
+
+        if (sellerOrders.length === 0) {
+            ordersList.innerHTML = '<p>No orders yet.</p>';
+            return;
+        }
+
+        sellerOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
+        ordersList.innerHTML = '';
+
+        sellerOrders.forEach(order => {
+            const sellerItems = [];
+            let shopId = null;
+
+            order.items.forEach(itemGroup => {
+                if (itemGroup.items) {
+                    itemGroup.items.forEach(item => {
+                        if (item.product && item.product.sellerId === currentUser.id) {
+                            sellerItems.push(item);
+                            shopId = itemGroup.shopId;
+                        }
+                    });
+                }
+            });
+
+            if (sellerItems.length === 0) return;
+
+            const subtotal = sellerItems.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
+
+            const orderCard = document.createElement('div');
+            orderCard.className = 'order-card';
+
+            let deliveryHTML = '';
+            if (order.delivery) {
+                const orderData = JSON.stringify({
+                    id: order.id,
+                    date: order.date,
+                    customer: order.customer,
+                    delivery: order.delivery,
+                    items: order.items,
+                    shopId: shopId
+                });
+                deliveryHTML = `
+                    <div class="seller-delivery-address">
+                        <p><span class="label">📦 Delivery Location:</span></p>
+                        <p><strong>Address:</strong> ${order.delivery.address || 'Not specified'}</p>
+                        <p><strong>Coordinates:</strong> ${order.delivery.lat.toFixed(6)}, ${order.delivery.lng.toFixed(6)}</p>
+                        <button class="btn btn-primary btn-small show-route-btn" data-order='${orderData}'>
+                            <i class="fas fa-route"></i> Show Route
+                        </button>
+                    </div>
+                `;
+            }
+
+            const itemsHTML = sellerItems.map(item => {
+                let optionsHTML = '';
+                if (item.options && Object.keys(item.options).length > 0) {
+                    optionsHTML = '<div class="item-options">';
+                    for (const key in item.options) {
+                        optionsHTML += `<p><strong>${key}:</strong> ${item.options[key]}</p>`;
+                    }
+                    optionsHTML += '</div>';
+                }
+                const imgSrc = item.product.images && item.product.images[0] ? item.product.images[0] : 'https://placehold.co/100x100?text=No+Image';
+                return `
+                    <div class="order-item">
+                        <img src="${imgSrc}" alt="${item.product.name}" class="product-image">
+                        <div class="item-details">
+                            <p class="item-name">${item.product.name}</p>
+                            ${optionsHTML}
+                            <p class="item-quantity">Qty: ${item.quantity}</p>
+                            <p class="item-price">$${(item.product.price * item.quantity).toFixed(2)}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            orderCard.innerHTML = `
+                <div class="order-header">
+                    <span>Order #${order.id}</span>
+                    <span>${new Date(order.date).toLocaleDateString()}</span>
+                </div>
+                <div class="customer-info">
+                    <p><strong>Customer:</strong> ${order.customer.name}</p>
+                    <p><strong>Email:</strong> ${order.customer.email}</p>
+                    <p><strong>Phone:</strong> ${order.customer.phone}</p>
+                    <p><strong>Status:</strong> <span class="status-${order.status.toLowerCase().replace(' ', '-')}">${order.status}</span></p>
+                </div>
+                ${deliveryHTML}
+                <div class="order-items">
+                    ${itemsHTML}
+                </div>
+                <div class="order-total">
+                    <p><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</p>
+                </div>
+                <div class="order-actions">
+                    <button class="btn btn-small update-status" data-order="${order.id}">
+                        Update Status
+                    </button>
+                </div>
+            `;
+
+            ordersList.appendChild(orderCard);
+
+            const routeBtn = orderCard.querySelector('.show-route-btn');
+            if (routeBtn) {
+                routeBtn.addEventListener('click', function() {
+                    const orderData = JSON.parse(this.getAttribute('data-order'));
+                    showDeliveryRoute(orderData);
+                });
+            }
+
+            const statusBtn = orderCard.querySelector('.update-status');
+            if (statusBtn) {
+                statusBtn.addEventListener('click', function() {
+                    updateOrderStatus(this.getAttribute('data-order'));
+                });
+            }
+        });
+    } catch (error) {
+        console.error('Error loading orders:', error);
+        ordersList.innerHTML = '<p>Error loading orders. Please try again.</p>';
+    }
+}
+
+console.log('✅ Delivery system loaded successfully (fixed version)');
 });
