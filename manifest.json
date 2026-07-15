@@ -1,0 +1,24 @@
+{
+  "name": "MallHub – Your Digital Shopping Mall",
+  "short_name": "MallHub",
+  "description": "Shop thousands of products from verified sellers worldwide.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f9f9f9",
+  "theme_color": "#6b5be6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='32' fill='%236b5be6'/%3E%3Cpath d='M60 80 L60 60 C60 42 82 36 96 36 C110 36 132 42 132 60 L132 80' stroke='white' stroke-width='10' fill='none' stroke-linecap='round'/%3E%3Crect x='48' y='80' width='96' height='72' rx='12' fill='white' opacity='0.92'/%3E%3Ccircle cx='72' cy='110' r='8' fill='%236b5be6'/%3E%3Ccircle cx='120' cy='110' r='8' fill='%236b5be6'/%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='80' fill='%236b5be6'/%3E%3Cpath d='M160 220 L160 164 C160 118 200 100 256 100 C312 100 352 118 352 164 L352 220' stroke='white' stroke-width='24' fill='none' stroke-linecap='round'/%3E%3Crect x='128' y='220' width='256' height='192' rx='28' fill='white' opacity='0.92'/%3E%3Ccircle cx='192' cy='296' r='20' fill='%236b5be6'/%3E%3Ccircle cx='320' cy='296' r='20' fill='%236b5be6'/%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
