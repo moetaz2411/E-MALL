@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+    <link rel="manifest" href="manifest.json" />
     
     <!-- REMOVE THIS LINE: -->
     <!-- <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places&callback=initMap" async defer></script> -->
@@ -131,7 +132,10 @@
                     </select>
                 </div>
             </div>
-            
+            <div id="loading-spinner" style="text-align: center; padding: 50px; display: none;">
+            <div class="spinner"></div>
+            <p style="margin-top: 15px; color: var(--gray-color);">Loading products...</p>
+        </div>
             <div class="product-grid" id="product-grid">
                 <!-- Products will be loaded here via JavaScript -->
             </div>
@@ -331,17 +335,7 @@
                 </div>
             </div>
             <!-- Add this in the orders tab content, inside #orders .orders-list -->
-<div id="order-route-display" style="display: none;">
-    <div class="route-info">
-        <h4><i class="fas fa-route"></i> Delivery Route</h4>
-        <div id="route-map" style="height: 250px; width: 100%; border-radius: 8px; margin: 10px 0;"></div>
-        <p><strong>Distance:</strong> <span class="distance" id="route-distance">Calculating...</span></p>
-        <p><strong>Estimated Duration:</strong> <span class="duration" id="route-duration">Calculating...</span></p>
-        <button class="btn btn-primary" id="open-google-maps-btn">
-            <i class="fas fa-external-link-alt"></i> Open in Google Maps
-        </button>
-    </div>
-</div>
+
             <div class="tab-content" id="shop-settings">
                 <form id="shop-settings-form">
                     <div class="form-group">
