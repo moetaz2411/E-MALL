@@ -531,6 +531,8 @@ let cart = [];
 let products = [];
 let orders = [];
 let shops = [];
+let sellerProductsCache = null;
+let sellerOrdersCache = null;
 
     // Helper functions for localStorage
     // Firebase data functions
@@ -681,47 +683,85 @@ let isAdmin = false;
     // Initialize the app
  async function init() {
   try {
-    // Hide Shops and Deals buttons by default
+    // 🔽 1. SHOW LOADING SPINNER
+    showLoadingSpinner();
+
+    // 🔽 2. HIDE ADMIN BUTTONS BY DEFAULT
     hideAdminButtons();
 
-    // Rest of your initialization code...
-    const productsSnapshot = await database.ref('products').once('value');
-    products = productsSnapshot.val() ? Object.values(productsSnapshot.val()) : [];
-      if (products.length === 0) {
-      products = initialProducts.map(product => ({
-        ...product,
-        rating: (Math.random() * 1 + 4).toFixed(1) // Random between 4.0 and 5.0
-      }));
+    // 🔽 3. TRY CACHED PRODUCTS FIRST (INSTANT DISPLAY)
+    const cached = getCachedProducts();
+    if (cached && cached.length > 0) {
+      products = cached;
+      renderProducts(products);
+      hideLoadingSpinner(); // Hide spinner immediately if cache works
     }
 
-    // Render products with random sorting
-    renderProducts(products);
-    
-    
-    const usersSnapshot = await database.ref('users').once('value');
+    // 🔽 4. FETCH FRESH DATA IN PARALLEL (BACKGROUND)
+    const [productsSnapshot, usersSnapshot, shopsSnapshot] = await Promise.all([
+      database.ref('products').once('value'),
+      database.ref('users').once('value'),
+      database.ref('shops').once('value')
+    ]);
+
+    // Process fresh products
+    const freshProducts = productsSnapshot.val() ? Object.values(productsSnapshot.val()) : [];
+    if (freshProducts.length > 0) {
+      products = freshProducts;
+      cacheProducts(products);          // Update cache
+      renderProducts(products);         // Re-render with fresh data
+    } else if (!cached || cached.length === 0) {
+      // If no cache and no fresh data, use initial sample products
+      products = initialProducts.map(p => ({ ...p, rating: (Math.random() * 1 + 4).toFixed(1) }));
+      renderProducts(products);
+    }
+
+    // 🔽 5. HIDE SPINNER (if not already hidden)
+    hideLoadingSpinner();
+
+    // 🔽 6. PROCESS OTHER DATA (users, shops, cart) IN BACKGROUND
     users = usersSnapshot.val() ? Object.values(usersSnapshot.val()) : [];
-    
-    const shopsSnapshot = await database.ref('shops').once('value');
     shops = shopsSnapshot.val() ? Object.values(shopsSnapshot.val()) : [];
-    
-    // Load cart if user is logged in
+
     if (currentUser) {
       const cartSnapshot = await database.ref(`cart/${currentUser.id}`).once('value');
       cart = cartSnapshot.val() ? Object.values(cartSnapshot.val()) : [];
+      updateCartCount();
     }
-    
-    renderProducts(products);
+
+    // 🔽 7. FINALIZE UI SETUP
     setupEventListeners();
-    updateCartCount();
     updateSellerButton();
     initializeCountrySelect();
     initializePaymentMethods();
     initCurrencyConverter();
+
   } catch (error) {
     console.error("Initialization error:", error);
+    hideLoadingSpinner();
+    showSuccessModal('Error', 'Failed to load products. Please refresh.');
   }
 }
+function cacheProducts(products) {
+  try {
+    localStorage.setItem('cached_products', JSON.stringify(products));
+    localStorage.setItem('cached_products_time', Date.now().toString());
+  } catch (e) {}
+}
 
+function getCachedProducts() {
+  try {
+    const cached = localStorage.getItem('cached_products');
+    const cachedTime = localStorage.getItem('cached_products_time');
+    if (cached && cachedTime) {
+      const age = Date.now() - parseInt(cachedTime);
+      if (age < 5 * 60 * 1000) { // 5 minutes cache
+        return JSON.parse(cached);
+      }
+    }
+    return null;
+  } catch (e) { return null; }
+}
 // Admin verification function
 function verifyAdmin(code) {
     const adminCodes = ["ADMIN2023"];
@@ -1698,7 +1738,15 @@ function verifySeller(email, code) {
         seller.verificationCode === code
     );
 }
+function showLoadingSpinner() {
+  document.getElementById('loading-spinner').style.display = 'block';
+  document.getElementById('product-grid').style.display = 'none';
+}
 
+function hideLoadingSpinner() {
+  document.getElementById('loading-spinner').style.display = 'none';
+  document.getElementById('product-grid').style.display = 'grid';
+}
 // Improved verification request function
 async function submitVerificationRequest(name, email, phone, business, businessType, industry, 
                                         description, instagram, facebook, website, otherSocial, message) {
@@ -1887,29 +1935,35 @@ function updateSellerDashboardButton() {
     }
 
     // Populate shop settings form
-    function populateShopSettings() {
-        if (!currentUser?.verifiedSeller) return;
-        
-        document.getElementById('shop-name').value = currentUser.shopName || '';
-        document.getElementById('shop-description').value = currentUser.shopDescription || '';
-        document.getElementById('shop-url').value = currentUser.shopUrl || '';
-        
-        const logoPreview = document.getElementById('shop-logo-preview');
-        logoPreview.innerHTML = '';
-        if (currentUser.shopLogo) {
-            const img = document.createElement('img');
-            img.src = currentUser.shopLogo;
-            logoPreview.appendChild(img);
+   async function populateShopSettings() {
+    if (!currentUser?.verifiedSeller) return;
+
+    try {
+        const shop = await getShopByUserId(currentUser.id);
+        if (shop) {
+            document.getElementById('shop-name').value = shop.name || '';
+            document.getElementById('shop-description').value = shop.description || '';
+            document.getElementById('shop-address').value = shop.address || '';
+            document.getElementById('shop-url').value = shop.url || '';
         }
-        
-        const bannerPreview = document.getElementById('shop-banner-preview');
-        bannerPreview.innerHTML = '';
-        if (currentUser.shopBanner) {
+        // Clear previews
+        document.getElementById('shop-logo-preview').innerHTML = '';
+        document.getElementById('shop-banner-preview').innerHTML = '';
+        // If you have logo/banner URLs stored, you can show them
+        if (shop?.logo) {
             const img = document.createElement('img');
-            img.src = currentUser.shopBanner;
-            bannerPreview.appendChild(img);
+            img.src = shop.logo;
+            document.getElementById('shop-logo-preview').appendChild(img);
         }
+        if (shop?.banner) {
+            const img = document.createElement('img');
+            img.src = shop.banner;
+            document.getElementById('shop-banner-preview').appendChild(img);
+        }
+    } catch (error) {
+        console.error("Error loading shop settings:", error);
     }
+}
 
     // ===== SHOP MANAGEMENT FUNCTIONS =====
 
@@ -1917,16 +1971,21 @@ function updateSellerDashboardButton() {
 // Save shop settings (with address geocoding)
 async function saveShopSettings() {
     if (!currentUser?.verifiedSeller) return;
-    
-    const name = document.getElementById('shop-name').value;
-    const description = document.getElementById('shop-description').value;
-    const url = validateShopUrl(document.getElementById('shop-url').value);
-    const address = document.getElementById('shop-address')?.value || '';
-    
+
+    const name = document.getElementById('shop-name').value.trim();
+    const description = document.getElementById('shop-description').value.trim();
+    const address = document.getElementById('shop-address').value.trim();
+    const url = validateShopUrl(document.getElementById('shop-url').value.trim());
+
+    if (!name || !url) {
+        showSuccessModal('Error', 'Shop name and URL are required.');
+        return;
+    }
+
     let lat = null;
     let lng = null;
-    
-    // Try to geocode the address
+
+    // Geocode address if provided
     if (address) {
         try {
             const response = await fetch(
@@ -1944,33 +2003,41 @@ async function saveShopSettings() {
             console.error('Geocoding error:', error);
         }
     }
-    
+
+    // Prepare shop data
     const shopData = {
         id: currentUser.id,
         owner: currentUser.id,
         name,
-        url,
         description,
         address: address || '',
+        url,
         lat: lat,
         lng: lng,
         ownerEmail: currentUser.email,
         verified: true,
         createdAt: new Date().toISOString(),
-        totalSales: 0,
-        totalRevenue: 0,
-        totalCommission: 0
+        totalSales: currentUser.totalSales || 0,
+        totalRevenue: currentUser.totalRevenue || 0,
+        totalCommission: currentUser.totalCommission || 0
     };
 
     try {
         await database.ref(`shops/${currentUser.id}`).set(shopData);
+        // Update currentUser with the new data
         currentUser.shopName = name;
+        currentUser.shopDescription = description;
+        currentUser.shopAddress = address;
         currentUser.shopUrl = url;
+        currentUser.shopLat = lat;
+        currentUser.shopLng = lng;
+        // Also save to users node (optional)
         await saveUser(currentUser);
+
         showSuccessModal('Shop Updated', 'Your shop settings have been saved.');
     } catch (error) {
         console.error("Error saving shop:", error);
-        showSuccessModal('Error', 'Failed to save shop settings');
+        showSuccessModal('Error', 'Failed to save shop settings.');
     }
 }
 
@@ -1979,8 +2046,10 @@ async function getShopByUserId(userId) {
   return snapshot.exists() ? snapshot.val() : null;
 }
 
-async function loadSellerProducts() {
+async function loadSellerProducts(forceRefresh = false) {
   const productsList = document.getElementById('seller-products-list');
+  if (!productsList) return;
+
   productsList.innerHTML = '<p>Loading products...</p>';
 
   if (!currentUser?.verifiedSeller) {
@@ -1989,67 +2058,81 @@ async function loadSellerProducts() {
   }
 
   try {
-    const snapshot = await database.ref('products').once('value');
-    const allProducts = snapshot.val() ? Object.values(snapshot.val()) : [];
-    
-    // Properly filter by sellerId (using UID)
-    const sellerProducts = allProducts.filter(p => p.sellerId === currentUser.id);
-
-    if (sellerProducts.length === 0) {
-      productsList.innerHTML = '<p>No products added yet.</p>';
+    // Use cache unless forced refresh
+    if (!forceRefresh && sellerProductsCache) {
+      renderSellerProducts(sellerProductsCache, productsList);
       return;
     }
 
-    productsList.innerHTML = '';
+    // ✅ QUERY only this seller's products – much faster
+    const snapshot = await database.ref('products')
+      .orderByChild('sellerId')
+      .equalTo(currentUser.id)
+      .once('value');
 
-    sellerProducts.forEach(product => {
-      const productItem = document.createElement('div');
-      productItem.className = 'product-item';
-      productItem.innerHTML = `
-        <div class="product-header">
-          <h4>${product.name}</h4>
-          <span>$${product.price.toFixed(2)}</span>
-        </div>
-        <div class="product-details">
-          <img src="${product.images?.[0] || 'https://placehold.co/300x300?text=No+Image'}" 
-               alt="${product.name}">
-          <div class="product-info">
-            <p><strong>Category:</strong> ${product.category}</p>
-            <p><strong>Rating:</strong> ${product.rating || 'Not rated'}</p>
-            ${product.description ? `<p>${product.description}</p>` : ''}
-          </div>
-        </div>
-        <div class="product-actions">
-          <button class="btn btn-edit edit-product" data-id="${product.id}">
-            <i class="fas fa-edit"></i> Edit
-          </button>
-          <button class="btn btn-danger delete-product" data-id="${product.id}">
-            <i class="fas fa-trash"></i> Delete
-          </button>
-        </div>
-      `;
+    const sellerProducts = snapshot.val() ? Object.values(snapshot.val()) : [];
 
-      productsList.appendChild(productItem);
-    });
-
-    document.querySelectorAll('.edit-product').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const productId = btn.getAttribute('data-id');
-        editProduct(productId);
-      });
-    });
-
-    document.querySelectorAll('.delete-product').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const productId = btn.getAttribute('data-id');
-        deleteProduct(productId);
-      });
-    });
-
+    // Store in cache
+    sellerProductsCache = sellerProducts;
+    renderSellerProducts(sellerProducts, productsList);
   } catch (error) {
     console.error("Error loading products:", error);
     productsList.innerHTML = '<p>Error loading products. Please try again.</p>';
   }
+}
+
+// Helper to render seller products (used by cache and fresh load)
+function renderSellerProducts(products, container) {
+  if (products.length === 0) {
+    container.innerHTML = '<p>No products added yet.</p>';
+    return;
+  }
+
+  container.innerHTML = '';
+
+  products.forEach(product => {
+    const productItem = document.createElement('div');
+    productItem.className = 'product-item';
+    productItem.innerHTML = `
+      <div class="product-header">
+        <h4>${product.name}</h4>
+        <span>$${product.price?.toFixed(2) || '0.00'}</span>
+      </div>
+      <div class="product-details">
+        <img src="${product.images?.[0] || 'https://placehold.co/300x300?text=No+Image'}" 
+             alt="${product.name}">
+        <div class="product-info">
+          <p><strong>Category:</strong> ${product.category || 'Uncategorized'}</p>
+          <p><strong>Rating:</strong> ${product.rating || 'Not rated'}</p>
+          ${product.description ? `<p>${product.description}</p>` : ''}
+        </div>
+      </div>
+      <div class="product-actions">
+        <button class="btn btn-edit edit-product" data-id="${product.id}">
+          <i class="fas fa-edit"></i> Edit
+        </button>
+        <button class="btn btn-danger delete-product" data-id="${product.id}">
+          <i class="fas fa-trash"></i> Delete
+        </button>
+      </div>
+    `;
+    container.appendChild(productItem);
+  });
+
+  // Attach event listeners
+  container.querySelectorAll('.edit-product').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const productId = btn.getAttribute('data-id');
+      editProduct(productId);
+    });
+  });
+
+  container.querySelectorAll('.delete-product').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const productId = btn.getAttribute('data-id');
+      deleteProduct(productId);
+    });
+  });
 }
 
 
@@ -2109,6 +2192,7 @@ async function deleteProduct(productId) {
       const snapshot = await database.ref('products').once('value');
       products = snapshot.val() ? Object.values(snapshot.val()) : [];
 
+      sellerProductsCache = null; 
       loadSellerProducts();
       renderProducts(products);
       showSuccessModal('Success', 'Product deleted successfully');
@@ -2116,122 +2200,6 @@ async function deleteProduct(productId) {
       console.error("Error deleting product:", error);
       showSuccessModal('Error', 'Failed to delete product');
     }
-  }
-}
-
-
-    // Load seller's orders
- async function loadSellerOrders() {
-  const ordersList = document.querySelector('#orders .orders-list');
-  ordersList.innerHTML = '<p>Loading orders...</p>';
-
-  if (!currentUser?.verifiedSeller) {
-    ordersList.innerHTML = '<p>No seller account</p>';
-    return;
-  }
-
-  try {
-    const snapshot = await database.ref('orders').once('value');
-    const allOrders = snapshot.val() ? Object.values(snapshot.val()) : [];
-
-    const sellerOrders = allOrders.filter(order => {
-      return order.items && order.items.some(itemGroup => {
-        return itemGroup.items && itemGroup.items.some(item => {
-          return item.product && item.product.sellerId === currentUser.id;
-        });
-      });
-    });
-
-    if (sellerOrders.length === 0) {
-      ordersList.innerHTML = '<p>No orders yet.</p>';
-      return;
-    }
-
-    sellerOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
-    ordersList.innerHTML = '';
-
-    sellerOrders.forEach(order => {
-      const sellerItems = [];
-      
-      // Collect items belonging to this seller
-      order.items.forEach(itemGroup => {
-        if (itemGroup.items) {
-          itemGroup.items.forEach(item => {
-            if (item.product && item.product.sellerId === currentUser.id) {
-              sellerItems.push(item);
-            }
-          });
-        }
-      });
-
-      if (sellerItems.length === 0) return;
-
-      const subtotal = sellerItems.reduce((sum, item) => 
-        sum + (item.product.price * item.quantity), 0);
-
-      const orderCard = document.createElement('div');
-      orderCard.className = 'order-card';
-      
-      // Create options display HTML for each item
-      const itemsHTML = sellerItems.map(item => {
-        const optionsHTML = item.options && Object.keys(item.options).length > 0 
-          ? `<div class="item-options">
-               ${Object.entries(item.options).map(([key, value]) => 
-                 `<p><strong>${key}:</strong> ${value}</p>`).join('')}
-             </div>`
-          : '';
-        
-        return `
-          <div class="order-item">
-            <img src="${item.product.images?.[0] || 'https://placehold.co/100x100?text=No+Image'}" 
-                 alt="${item.product.name}" class="product-image">
-            <div class="item-details">
-              <p class="item-name">${item.product.name}</p>
-              ${optionsHTML}
-              <p class="item-quantity">Qty: ${item.quantity}</p>
-              <p class="item-price">$${(item.product.price * item.quantity).toFixed(2)}</p>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      orderCard.innerHTML = `
-        <div class="order-header">
-          <span>Order #${order.id}</span>
-          <span>${new Date(order.date).toLocaleDateString()}</span>
-        </div>
-        <div class="customer-info">
-          <p><strong>Customer:</strong> ${order.customer.name}</p>
-          <p><strong>Email:</strong> ${order.customer.email}</p>
-          <p><strong>Phone:</strong> ${order.customer.phone}</p>
-          <p><strong>Address:</strong> ${order.customer.shippingAddress.address}</p>
-          <p><strong>City:</strong> ${order.customer.shippingAddress.city}</p>
-          <p><strong>ZIP Code:</strong> ${order.customer.shippingAddress.zip}</p>
-          <p><strong>Country:</strong> ${order.customer.shippingAddress.country}</p>
-          <p><strong>Status:</strong> <span class="status-${order.status.toLowerCase()}">${order.status}</span></p>
-        </div>
-        <div class="order-items">
-          ${itemsHTML}
-        </div>
-        <div class="order-total">
-          <p><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</p>
-        </div>
-        <div class="order-actions">
-          <button class="btn btn-small update-status" data-order="${order.id}">
-            Update Status
-          </button>
-        </div>
-      `;
-
-      ordersList.appendChild(orderCard);
-
-      orderCard.querySelector('.update-status').addEventListener('click', () => {
-        updateOrderStatus(order.id);
-      });
-    });
-  } catch (error) {
-    console.error("Error loading orders:", error);
-    ordersList.innerHTML = '<p>Error loading orders. Please try again.</p>';
   }
 }
 
@@ -2303,6 +2271,7 @@ async function deleteProduct(productId) {
       
       showSuccessModal('Status Updated', `Order #${orderId} status has been updated to ${newStatus}.`);
       document.body.removeChild(modal);
+      sellerOrdersCache = null; 
       loadSellerOrders();
     });
   } catch (error) {
@@ -2413,6 +2382,7 @@ async function addNewProduct() {
     products = snapshot.val() ? Object.values(snapshot.val()) : [];
     
     resetProductForm();
+    sellerProductsCache = null;
     loadSellerProducts();
     renderProducts(products);
   } catch (error) {
@@ -2424,57 +2394,63 @@ async function addNewProduct() {
 // Render products to the grid
 function renderProducts(productsToRender) {
   const productGrid = document.getElementById('product-grid');
-  productGrid.innerHTML = '';
+  productGrid.innerHTML = ''; // Clear existing content
 
-  if (!productsToRender || !Array.isArray(productsToRender) || productsToRender.length === 0) {
-    productGrid.innerHTML = '<p>No products found.</p>';
+  if (!productsToRender || productsToRender.length === 0) {
+    productGrid.innerHTML = '<p class="no-products">No products found.</p>';
     return;
   }
 
-  // Create a copy of the array to avoid mutating the original
-  const productsCopy = [...productsToRender];
-
-  // Assign random ratings and sort by them
-  const randomizedProducts = productsCopy.map(product => ({
-    ...product,
-    rating: (Math.random() * 1 + 4).toFixed(1) // Random between 4.0 and 5.0
-  })).sort((a, b) => b.rating - a.rating); // Sort descending by rating
+  // Use document fragment for batch insertion
+  const fragment = document.createDocumentFragment();
+  
+  // Randomize and sort
+  const randomizedProducts = [...productsToRender]
+    .map(product => ({
+      ...product,
+      rating: (Math.random() * 1 + 4).toFixed(1)
+    }))
+    .sort((a, b) => b.rating - a.rating);
 
   randomizedProducts.forEach((product) => {
     const productItem = document.createElement('div');
     productItem.className = 'product-card';
-
-    const productImage = product.images[0] || 'https://placehold.co/300x300?text=No+Image';
     
+    // Use template literal but create element once
     productItem.innerHTML = `
-  <div class="product-image-container">
-    <img src="${productImage}" alt="${product.name || 'Product'}" class="product-image">
-    ${product.verifiedSeller ? '<span class="verified-badge">Verified</span>' : ''}
-  </div>
-  <div class="product-info">
-    <h3 class="product-title">${product.name || 'Unnamed Product'}</h3>
-    <p class="product-seller">${product.seller || 'Unknown Seller'}</p>
-    <div class="product-price">
-      <span class="price-display" data-usd="${product.price || 0}">
-        ${formatCurrency(product.price || 0, 'USD')}
-      </span>
-      <button class="convert-btn" data-usd="${product.price || 0}">
-        <i class="fas fa-calculator"></i>
-      </button>
-    </div>
-    <div class="product-rating">
-      ${renderRatingStars(product.rating)}
-      <span>(${product.rating})</span>
-    </div>
-    <div class="product-actions">
-      <button class="btn btn-primary view-details" data-id="${product.id || ''}">Details</button>
-      <button class="btn btn-secondary buy-now" data-id="${product.id || ''}">Buy Now</button>
-    </div>
-  </div>
-`;
-
-    productGrid.appendChild(productItem);
+      <div class="product-image-container">
+        <img src="${product.images?.[0] || 'https://placehold.co/300x300?text=No+Image'}" 
+             alt="${product.name || 'Product'}" 
+             class="product-image"
+             loading="lazy">
+        ${product.verifiedSeller ? '<span class="verified-badge">Verified</span>' : ''}
+      </div>
+      <div class="product-info">
+        <h3 class="product-title">${product.name || 'Unnamed Product'}</h3>
+        <p class="product-seller">${product.seller || 'Unknown Seller'}</p>
+        <div class="product-price">
+          <span class="price-display" data-usd="${product.price || 0}">
+            ${formatCurrency(product.price || 0, 'USD')}
+          </span>
+          <button class="convert-btn" data-usd="${product.price || 0}">
+            <i class="fas fa-calculator"></i>
+          </button>
+        </div>
+        <div class="product-rating">
+          ${renderRatingStars(product.rating)}
+          <span>(${product.rating})</span>
+        </div>
+        <div class="product-actions">
+          <button class="btn btn-primary view-details" data-id="${product.id || ''}">Details</button>
+          <button class="btn btn-secondary buy-now" data-id="${product.id || ''}">Buy Now</button>
+        </div>
+      </div>
+    `;
+    
+    fragment.appendChild(productItem);
   });
+
+  productGrid.appendChild(fragment);
 }
 
 
@@ -2859,6 +2835,7 @@ async function addToCart(productId) {
   }
   
   updateCartCount();
+  sellerOrdersCache = null; 
   
   // 7. Show confirmation
   showSuccessModal(
@@ -3565,79 +3542,151 @@ function searchAddress(query) {
 // --- 7. SHOW DELIVERY ROUTE FOR SELLER ---
 // --- 7. SHOW DELIVERY ROUTE FOR SELLER (FIXED) ---
 // --- 7. SHOW DELIVERY ROUTE FOR SELLER (FIXED - No duplicate map) ---
+// --- SHOW DELIVERY ROUTE IN A POPUP MODAL ---
+// --- SHOW DELIVERY ROUTE IN A POPUP MODAL ---
 function showDeliveryRoute(order) {
     console.log('showDeliveryRoute called', order);
-    
+
     if (!order || !order.delivery || !order.delivery.lat || !order.delivery.lng) {
-        console.warn('No delivery location in order');
-        document.getElementById('order-route-display').style.display = 'none';
         showSuccessModal('Error', 'No delivery location found for this order.');
         return;
     }
-
-    const routeDisplay = document.getElementById('order-route-display');
-    routeDisplay.style.display = 'block';
 
     const deliveryLat = order.delivery.lat;
     const deliveryLng = order.delivery.lng;
     const shopId = order.shopId || (order.items && order.items[0] && order.items[0].shopId);
 
+    // Create the modal overlay
+    const modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal';
+    modalOverlay.style.display = 'block';
+    modalOverlay.id = 'route-popup-modal';
+
+    // Modal content
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.style.maxWidth = '900px';
+    modalContent.style.width = '95%';
+    modalContent.style.padding = '20px';
+
+    // Close button (×) - top right
+    const closeBtn = document.createElement('span');
+    closeBtn.className = 'close-modal';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.style.position = 'absolute';
+    closeBtn.style.top = '10px';
+    closeBtn.style.right = '15px';
+    closeBtn.style.fontSize = '1.8rem';
+    closeBtn.style.cursor = 'pointer';
+
+    // Title
+    const title = document.createElement('h2');
+    title.textContent = '📍 Delivery Route';
+    title.style.marginBottom = '15px';
+
+    // Map container
+    const mapContainer = document.createElement('div');
+    mapContainer.id = 'route-popup-map';
+    mapContainer.style.height = '400px';
+    mapContainer.style.width = '100%';
+    mapContainer.style.borderRadius = '8px';
+    mapContainer.style.margin = '15px 0';
+    mapContainer.style.border = '1px solid #ddd';
+
+    // Info section with buttons
+    const infoDiv = document.createElement('div');
+    infoDiv.className = 'route-info';
+    infoDiv.innerHTML = `
+        <p><strong>Distance:</strong> <span id="popup-route-distance">Calculating...</span></p>
+        <p><strong>Estimated Duration:</strong> <span id="popup-route-duration">Calculating...</span></p>
+        <div style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="popup-open-google-maps">
+                <i class="fas fa-external-link-alt"></i> Open in Google Maps
+            </button>
+            <button class="btn btn-secondary" id="popup-toggle-instructions">
+                <i class="fas fa-list-ul"></i> Hide Instructions
+            </button>
+            <button class="btn btn-secondary" id="popup-close-route">
+                <i class="fas fa-times"></i> Close
+            </button>
+        </div>
+    `;
+
+    // Assemble modal
+    modalContent.appendChild(closeBtn);
+    modalContent.appendChild(title);
+    modalContent.appendChild(mapContainer);
+    modalContent.appendChild(infoDiv);
+    modalOverlay.appendChild(modalContent);
+    document.body.appendChild(modalOverlay);
+
+    // Close modal function
+    function closeModal() {
+        if (window._popupRouteMap) {
+            try {
+                window._popupRouteMap.remove();
+            } catch (e) {}
+            window._popupRouteMap = null;
+        }
+        if (document.body.contains(modalOverlay)) {
+            document.body.removeChild(modalOverlay);
+        }
+        document.body.style.overflow = 'auto';
+    }
+
+    // Close button (×)
+    closeBtn.addEventListener('click', closeModal);
+    // Close button (bottom)
+    document.getElementById('popup-close-route').addEventListener('click', closeModal);
+    // Click outside
+    modalOverlay.addEventListener('click', function(e) {
+        if (e.target === modalOverlay) closeModal();
+    });
+
+    // Prevent body scroll
+    document.body.style.overflow = 'hidden';
+
+    // --- Now load the route ---
     if (!shopId) {
-        console.warn('No shop ID found in order');
-        showDeliveryPointOnly(deliveryLat, deliveryLng);
+        showDeliveryPointOnlyPopup(deliveryLat, deliveryLng, mapContainer);
         showSuccessModal('Shop Location Missing', 'The seller has not set their shop location. Showing delivery point only.');
         return;
     }
 
-    // Get seller's shop location
+    // Get shop location
     getShopLocation(shopId).then(function(shopLocation) {
-        console.log('Shop location:', shopLocation);
-        
         if (!shopLocation) {
-            console.warn('Shop location not set');
-            showDeliveryPointOnly(deliveryLat, deliveryLng);
+            showDeliveryPointOnlyPopup(deliveryLat, deliveryLng, mapContainer);
             showSuccessModal('Shop Location Missing', 'Please set your shop location in Shop Settings to see the route.');
             return;
         }
 
-        // --- DESTROY ANY EXISTING MAP BEFORE CREATING A NEW ONE ---
-        destroyRouteMap();
+        // --- Create the map inside the modal ---
+        const map = L.map(mapContainer.id).setView([shopLocation.lat, shopLocation.lng], 12);
+        window._popupRouteMap = map; // store for cleanup
 
-        const routeMapElement = document.getElementById('route-map');
-        if (!routeMapElement) {
-            console.error('Route map element not found');
-            return;
-        }
-
-        // Create the route map
-        const routeMap = L.map('route-map').setView([shopLocation.lat, shopLocation.lng], 12);
-        window._routeMapInstance = routeMap; // Store for later destruction
-
-        // Street view
-        const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        // Street layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        }).addTo(routeMap);
+        }).addTo(map);
 
-        // Satellite view
+        // Satellite layer (optional)
         const satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
             maxZoom: 19,
             attribution: '&copy; <a href="https://www.esri.com/">Esri</a>'
         });
-
-        // Layer control to switch views
         L.control.layers({
-            "Street": streetLayer,
+            "Street": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }),
             "Satellite": satLayer
-        }).addTo(routeMap);
+        }).addTo(map);
 
-        // --- Markers ---
+        // Markers
         const shopIcon = L.divIcon({
             html: '<div style="background: #00b894; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; font-weight: bold;">S</div>',
             iconSize: [24, 24],
             iconAnchor: [12, 12]
         });
-
         const deliveryIcon = L.divIcon({
             html: '<div style="background: #d63031; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; font-weight: bold;">D</div>',
             iconSize: [24, 24],
@@ -3645,113 +3694,132 @@ function showDeliveryRoute(order) {
         });
 
         L.marker([shopLocation.lat, shopLocation.lng], { icon: shopIcon })
-            .addTo(routeMap)
-            .bindPopup('<strong>Your Shop</strong><br>Starting point');
-
+            .addTo(map)
+            .bindPopup('<strong>Shop</strong><br>Starting point');
         L.marker([deliveryLat, deliveryLng], { icon: deliveryIcon })
-            .addTo(routeMap)
-            .bindPopup('<strong>Delivery Location</strong><br>Destination');
+            .addTo(map)
+            .bindPopup('<strong>Delivery</strong><br>Destination');
 
-        // --- Calculate route ---
+        // Route calculation
         const waypoints = [
             L.latLng(shopLocation.lat, shopLocation.lng),
             L.latLng(deliveryLat, deliveryLng)
         ];
 
-        const distEl = document.getElementById('route-distance');
-        const durEl = document.getElementById('route-duration');
-        if (distEl) distEl.textContent = 'Calculating...';
-        if (durEl) durEl.textContent = 'Calculating...';
+        const distEl = document.getElementById('popup-route-distance');
+        const durEl = document.getElementById('popup-route-duration');
 
         let routeCalculated = false;
+        let routingControl = L.Routing.control({
+            waypoints: waypoints,
+            routeWhileDragging: false,
+            showAlternatives: false,
+            lineOptions: { styles: [{ color: '#6b5be6', weight: 5, opacity: 0.8 }] },
+            router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
+            createMarker: function() { return null; }
+        }).addTo(map);
 
-        try {
-            routingControl = L.Routing.control({
-                waypoints: waypoints,
-                routeWhileDragging: false,
-                showAlternatives: false,
-                lineOptions: { styles: [{ color: '#6b5be6', weight: 5, opacity: 0.8 }] },
-                router: L.Routing.osrmv1({ serviceUrl: 'https://router.project-osrm.org/route/v1' }),
-                createMarker: function() { return null; }
-            }).addTo(routeMap);
-
-            routingControl.on('routesfound', function(e) {
-                const routes = e.routes;
-                if (routes && routes.length > 0) {
-                    const summary = routes[0].summary;
-                    if (summary) {
-                        const distance = summary.totalDistance / 1000;
-                        const duration = summary.totalTime / 60;
-                        if (distEl) distEl.textContent = distance.toFixed(1) + ' km';
-                        if (durEl) durEl.textContent = Math.round(duration) + ' minutes';
-                        routeCalculated = true;
-                    }
+        routingControl.on('routesfound', function(e) {
+            const routes = e.routes;
+            if (routes && routes.length > 0) {
+                const summary = routes[0].summary;
+                if (summary) {
+                    const distance = summary.totalDistance / 1000;
+                    const duration = summary.totalTime / 60;
+                    if (distEl) distEl.textContent = distance.toFixed(1) + ' km';
+                    if (durEl) durEl.textContent = Math.round(duration) + ' minutes';
+                    routeCalculated = true;
                 }
-            });
+            }
+        });
 
-            // Fallback if route doesn't load after 10s
-            setTimeout(function() {
-                if (!routeCalculated) {
-                    // Draw straight line
-                    const latlngs = [
-                        [shopLocation.lat, shopLocation.lng],
-                        [deliveryLat, deliveryLng]
-                    ];
-                    L.polyline(latlngs, { color: '#6b5be6', weight: 3, dashArray: '5, 10' })
-                        .addTo(routeMap)
-                        .bindPopup('Direct line (route unavailable)');
-                    const dist = calculateDistance(shopLocation.lat, shopLocation.lng, deliveryLat, deliveryLng);
-                    if (distEl) distEl.textContent = dist.toFixed(1) + ' km (approx)';
-                    if (durEl) durEl.textContent = 'Route unavailable';
-                    
-                    const bounds = L.latLngBounds([shopLocation, deliveryLat, deliveryLng]);
-                    routeMap.fitBounds(bounds, { padding: [50, 50] });
-                }
-            }, 10000);
+        // Fallback if route fails
+        setTimeout(function() {
+            if (!routeCalculated) {
+                const latlngs = [
+                    [shopLocation.lat, shopLocation.lng],
+                    [deliveryLat, deliveryLng]
+                ];
+                L.polyline(latlngs, { color: '#6b5be6', weight: 3, dashArray: '5, 10' })
+                    .addTo(map)
+                    .bindPopup('Direct line (route unavailable)');
+                const dist = calculateDistance(shopLocation.lat, shopLocation.lng, deliveryLat, deliveryLng);
+                if (distEl) distEl.textContent = dist.toFixed(1) + ' km (approx)';
+                if (durEl) durEl.textContent = 'Route unavailable';
+            }
+        }, 10000);
 
-        } catch (error) {
-            console.error('Routing error:', error);
-            // Fallback straight line
-            const latlngs = [
-                [shopLocation.lat, shopLocation.lng],
-                [deliveryLat, deliveryLng]
-            ];
-            L.polyline(latlngs, { color: '#6b5be6', weight: 3, dashArray: '5, 10' })
-                .addTo(routeMap)
-                .bindPopup('Direct line (route service unavailable)');
-            const dist = calculateDistance(shopLocation.lat, shopLocation.lng, deliveryLat, deliveryLng);
-            if (distEl) distEl.textContent = dist.toFixed(1) + ' km (approx)';
-            if (durEl) durEl.textContent = 'Route unavailable';
-            const bounds = L.latLngBounds([shopLocation, deliveryLat, deliveryLng]);
-            routeMap.fitBounds(bounds, { padding: [50, 50] });
-        }
-
-        // --- Open in Google Maps ---
-        const mapsBtn = document.getElementById('open-google-maps-btn');
-        if (mapsBtn) {
-            mapsBtn.onclick = function() {
-                const url = `https://www.google.com/maps/dir/${shopLocation.lat},${shopLocation.lng}/${deliveryLat},${deliveryLng}`;
-                window.open(url, '_blank');
-            };
-        }
-
-        // Fit bounds to show both points
+        // Fit bounds
         try {
             const bounds = L.latLngBounds([
                 [shopLocation.lat, shopLocation.lng],
                 [deliveryLat, deliveryLng]
             ]);
-            routeMap.fitBounds(bounds, { padding: [50, 50] });
+            map.fitBounds(bounds, { padding: [50, 50] });
         } catch (e) {}
 
-        // Refresh map after a moment
-        setTimeout(() => routeMap.invalidateSize(), 300);
+        // --- Toggle Instructions Button ---
+        const toggleBtn = document.getElementById('popup-toggle-instructions');
+        let instructionsVisible = true;
+
+        toggleBtn.addEventListener('click', function() {
+            // Find the routing instructions container
+            const container = document.querySelector('.leaflet-routing-container');
+            if (container) {
+                if (instructionsVisible) {
+                    container.style.display = 'none';
+                    toggleBtn.innerHTML = '<i class="fas fa-list-ul"></i> Show Instructions';
+                    instructionsVisible = false;
+                } else {
+                    container.style.display = '';
+                    toggleBtn.innerHTML = '<i class="fas fa-list-ul"></i> Hide Instructions';
+                    instructionsVisible = true;
+                }
+                // Invalidate map size to reflow
+                setTimeout(() => map.invalidateSize(), 100);
+            }
+        });
+
+        // Open in Google Maps button
+        document.getElementById('popup-open-google-maps').addEventListener('click', function() {
+            const url = `https://www.google.com/maps/dir/${shopLocation.lat},${shopLocation.lng}/${deliveryLat},${deliveryLng}`;
+            window.open(url, '_blank');
+        });
+
+        // Invalidate map size after a moment
+        setTimeout(() => map.invalidateSize(), 300);
 
     }).catch(function(error) {
         console.error('Error getting shop location:', error);
-        showDeliveryPointOnly(deliveryLat, deliveryLng);
+        showDeliveryPointOnlyPopup(deliveryLat, deliveryLng, mapContainer);
         showSuccessModal('Error', 'Could not load shop location. Please set your shop location in Settings.');
     });
+}
+
+// Helper: Show delivery point only in the popup modal
+function showDeliveryPointOnlyPopup(lat, lng, container) {
+    const map = L.map(container.id).setView([lat, lng], 13);
+    window._popupRouteMap = map;
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    const deliveryIcon = L.divIcon({
+        html: '<div style="background: #d63031; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+    });
+
+    L.marker([lat, lng], { icon: deliveryIcon })
+        .addTo(map)
+        .bindPopup('Delivery Location');
+
+    document.getElementById('popup-route-distance').textContent = 'Shop location not set';
+    document.getElementById('popup-route-duration').textContent = 'N/A';
+
+    setTimeout(() => map.invalidateSize(), 300);
 }
 
 // Helper: Calculate distance between two coordinates (Haversine)
@@ -3858,233 +3926,175 @@ if (typeof checkoutModal !== 'undefined' && checkoutModal) {
         }
     });
     observer.observe(checkoutModal, { attributes: true, attributeFilter: ['style'] });
-}
-
-// --- 12. MODIFIED CHECKOUT PROCESS ---
-// Replace the existing processCheckout function with this version
-async function processCheckout() {
-    const name = document.getElementById('checkout-name').value.trim();
-    const email = document.getElementById('checkout-email').value.trim();
-    const phone = document.getElementById('checkout-phone').value.trim();
-    const address = document.getElementById('checkout-address').value.trim();
-    const city = document.getElementById('checkout-city').value.trim();
-    const zip = document.getElementById('checkout-zip').value.trim();
-    const country = document.getElementById('checkout-country').value;
-    const paymentMethod = document.querySelector('input[name="payment"]:checked')?.value;
-
-    const deliveryLat = document.getElementById('delivery-lat').value;
-    const deliveryLng = document.getElementById('delivery-lng').value;
-    const deliveryAddress = document.getElementById('delivery-formatted-address').value || address;
-
-    if (!name || !email || !phone || !address || !city || !zip || !country || !paymentMethod) {
-        showSuccessModal('Error', 'Please complete all required fields.');
-        return;
-    }
-    if (!deliveryLat || !deliveryLng) {
-        showSuccessModal('Error', 'Please select a delivery location on the map.');
-        return;
-    }
-
-    const newOrder = {
-        id: 'ORD-' + Date.now(),
-        date: new Date().toISOString(),
-        customer: { name, email, phone, shippingAddress: { address, city, zip, country } },
-        delivery: { lat: parseFloat(deliveryLat), lng: parseFloat(deliveryLng), address: deliveryAddress },
-        items: [],
-        paymentMethod,
-        status: paymentMethod === 'cash-on-delivery' ? 'Pending Payment' : 'Processing',
-        total: 0
-    };
-
-    const shopGroups = {};
-    cart.forEach(item => {
-        const shopId = item.product.sellerId;
-        if (!shopGroups[shopId]) shopGroups[shopId] = [];
-        shopGroups[shopId].push(item);
-    });
-
-    for (const shopId in shopGroups) {
-        const items = shopGroups[shopId];
-        const shopTotal = items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-        newOrder.items.push({
-            shopId,
-            shopName: items[0].product.seller || 'Unknown Shop',
-            items: items.map(item => ({
-                product: {
-                    id: item.product.id,
-                    name: item.product.name,
-                    price: item.product.price,
-                    images: item.product.images,
-                    seller: item.product.seller,
-                    sellerId: item.product.sellerId
-                },
-                options: item.options,
-                quantity: item.quantity
-            })),
-            subtotal: shopTotal
-        });
-        newOrder.total += shopTotal;
-    }
-
-    await database.ref('orders/' + newOrder.id).set(newOrder);
-    await trackSale(newOrder);
-
-    cart = [];
-    if (currentUser) await updateCart(currentUser.id, []);
-    updateCartCount();
-
-    showSuccessModal(
-        'Order Confirmed! 🎉',
-        `Your order #${newOrder.id} has been placed successfully.\n\n📍 Delivery Location: ${deliveryAddress}\n\nYou'll receive a confirmation email shortly.`
-    );
-    toggleModal(checkoutModal);
-}
+  }
 
 // --- 13. MODIFIED LOAD SELLER ORDERS ---
-async function loadSellerOrders() {
-    const ordersList = document.querySelector('#orders .orders-list');
-    if (!ordersList) return;
-    ordersList.innerHTML = '<p>Loading orders...</p>';
+async function loadSellerOrders(forceRefresh = false) {
+  const ordersList = document.querySelector('#orders .orders-list');
+  if (!ordersList) return;
 
-    if (!currentUser?.verifiedSeller) {
-        ordersList.innerHTML = '<p>No seller account</p>';
-        return;
+  ordersList.innerHTML = '<p>Loading orders...</p>';
+
+  if (!currentUser?.verifiedSeller) {
+    ordersList.innerHTML = '<p>No seller account</p>';
+    return;
+  }
+
+  try {
+    // Use cache unless forced refresh
+    if (!forceRefresh && sellerOrdersCache) {
+      renderSellerOrders(sellerOrdersCache, ordersList);
+      return;
     }
 
-    try {
-        const snapshot = await database.ref('orders').once('value');
-        const allOrders = snapshot.val() ? Object.values(snapshot.val()) : [];
+    // Fetch all orders once (can’t query by sellerId directly with current structure)
+    const snapshot = await database.ref('orders').once('value');
+    const allOrders = snapshot.val() ? Object.values(snapshot.val()) : [];
 
-        const sellerOrders = allOrders.filter(order => {
-            return order.items && order.items.some(itemGroup => {
-                return itemGroup.items && itemGroup.items.some(item => {
-                    return item.product && item.product.sellerId === currentUser.id;
-                });
-            });
+    // Filter orders that contain items from this seller
+    const sellerOrders = allOrders.filter(order => {
+      return order.items && order.items.some(itemGroup => {
+        return itemGroup.items && itemGroup.items.some(item => {
+          return item.product && item.product.sellerId === currentUser.id;
         });
+      });
+    });
 
-        if (sellerOrders.length === 0) {
-            ordersList.innerHTML = '<p>No orders yet.</p>';
-            return;
-        }
-
-        sellerOrders.sort((a, b) => new Date(b.date) - new Date(a.date));
-        ordersList.innerHTML = '';
-
-        sellerOrders.forEach(order => {
-            const sellerItems = [];
-            let shopId = null;
-
-            order.items.forEach(itemGroup => {
-                if (itemGroup.items) {
-                    itemGroup.items.forEach(item => {
-                        if (item.product && item.product.sellerId === currentUser.id) {
-                            sellerItems.push(item);
-                            shopId = itemGroup.shopId;
-                        }
-                    });
-                }
-            });
-
-            if (sellerItems.length === 0) return;
-
-            const subtotal = sellerItems.reduce((sum, item) => sum + (item.product.price * item.quantity), 0);
-
-            const orderCard = document.createElement('div');
-            orderCard.className = 'order-card';
-
-            let deliveryHTML = '';
-            if (order.delivery) {
-                const orderData = JSON.stringify({
-                    id: order.id,
-                    date: order.date,
-                    customer: order.customer,
-                    delivery: order.delivery,
-                    items: order.items,
-                    shopId: shopId
-                });
-                deliveryHTML = `
-                    <div class="seller-delivery-address">
-                        <p><span class="label">📦 Delivery Location:</span></p>
-                        <p><strong>Address:</strong> ${order.delivery.address || 'Not specified'}</p>
-                        <p><strong>Coordinates:</strong> ${order.delivery.lat.toFixed(6)}, ${order.delivery.lng.toFixed(6)}</p>
-                        <button class="btn btn-primary btn-small show-route-btn" data-order='${orderData}'>
-                            <i class="fas fa-route"></i> Show Route
-                        </button>
-                    </div>
-                `;
-            }
-
-            const itemsHTML = sellerItems.map(item => {
-                let optionsHTML = '';
-                if (item.options && Object.keys(item.options).length > 0) {
-                    optionsHTML = '<div class="item-options">';
-                    for (const key in item.options) {
-                        optionsHTML += `<p><strong>${key}:</strong> ${item.options[key]}</p>`;
-                    }
-                    optionsHTML += '</div>';
-                }
-                const imgSrc = item.product.images && item.product.images[0] ? item.product.images[0] : 'https://placehold.co/100x100?text=No+Image';
-                return `
-                    <div class="order-item">
-                        <img src="${imgSrc}" alt="${item.product.name}" class="product-image">
-                        <div class="item-details">
-                            <p class="item-name">${item.product.name}</p>
-                            ${optionsHTML}
-                            <p class="item-quantity">Qty: ${item.quantity}</p>
-                            <p class="item-price">$${(item.product.price * item.quantity).toFixed(2)}</p>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            orderCard.innerHTML = `
-                <div class="order-header">
-                    <span>Order #${order.id}</span>
-                    <span>${new Date(order.date).toLocaleDateString()}</span>
-                </div>
-                <div class="customer-info">
-                    <p><strong>Customer:</strong> ${order.customer.name}</p>
-                    <p><strong>Email:</strong> ${order.customer.email}</p>
-                    <p><strong>Phone:</strong> ${order.customer.phone}</p>
-                    <p><strong>Status:</strong> <span class="status-${order.status.toLowerCase().replace(' ', '-')}">${order.status}</span></p>
-                </div>
-                ${deliveryHTML}
-                <div class="order-items">
-                    ${itemsHTML}
-                </div>
-                <div class="order-total">
-                    <p><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</p>
-                </div>
-                <div class="order-actions">
-                    <button class="btn btn-small update-status" data-order="${order.id}">
-                        Update Status
-                    </button>
-                </div>
-            `;
-
-            ordersList.appendChild(orderCard);
-
-            const routeBtn = orderCard.querySelector('.show-route-btn');
-            if (routeBtn) {
-                routeBtn.addEventListener('click', function() {
-                    const orderData = JSON.parse(this.getAttribute('data-order'));
-                    showDeliveryRoute(orderData);
-                });
-            }
-
-            const statusBtn = orderCard.querySelector('.update-status');
-            if (statusBtn) {
-                statusBtn.addEventListener('click', function() {
-                    updateOrderStatus(this.getAttribute('data-order'));
-                });
-            }
-        });
-    } catch (error) {
-        console.error('Error loading orders:', error);
-        ordersList.innerHTML = '<p>Error loading orders. Please try again.</p>';
-    }
+    // Store in cache
+    sellerOrdersCache = sellerOrders;
+    renderSellerOrders(sellerOrders, ordersList);
+  } catch (error) {
+    console.error("Error loading orders:", error);
+    ordersList.innerHTML = '<p>Error loading orders. Please try again.</p>';
+  }
 }
 
+// Helper to render seller orders (used by cache and fresh load)
+function renderSellerOrders(orders, container) {
+  if (orders.length === 0) {
+    container.innerHTML = '<p>No orders yet.</p>';
+    return;
+  }
+
+  // Sort by date descending
+  orders.sort((a, b) => new Date(b.date) - new Date(a.date));
+  container.innerHTML = '';
+
+  orders.forEach(order => {
+    const sellerItems = [];
+    let shopId = null;
+
+    // Collect items belonging to this seller
+    order.items.forEach(itemGroup => {
+      if (itemGroup.items) {
+        itemGroup.items.forEach(item => {
+          if (item.product && item.product.sellerId === currentUser.id) {
+            sellerItems.push(item);
+            shopId = itemGroup.shopId;
+          }
+        });
+      }
+    });
+
+    if (sellerItems.length === 0) return;
+
+    const subtotal = sellerItems.reduce((sum, item) => 
+      sum + (item.product.price * item.quantity), 0);
+
+    const orderCard = document.createElement('div');
+    orderCard.className = 'order-card';
+
+    // Delivery info (if available)
+    let deliveryHTML = '';
+    if (order.delivery) {
+      const orderData = JSON.stringify({
+        id: order.id,
+        date: order.date,
+        customer: order.customer,
+        delivery: order.delivery,
+        items: order.items,
+        shopId: shopId
+      });
+      deliveryHTML = `
+        <div class="seller-delivery-address">
+          <p><span class="label">📦 Delivery Location:</span></p>
+          <p><strong>Address:</strong> ${order.delivery.address || 'Not specified'}</p>
+          <p><strong>Coordinates:</strong> ${order.delivery.lat?.toFixed(6) || 'N/A'}, ${order.delivery.lng?.toFixed(6) || 'N/A'}</p>
+          <button class="btn btn-primary btn-small show-route-btn" data-order='${orderData}'>
+            <i class="fas fa-route"></i> Show Route
+          </button>
+        </div>
+      `;
+    }
+
+    // Build items HTML
+    const itemsHTML = sellerItems.map(item => {
+      let optionsHTML = '';
+      if (item.options && Object.keys(item.options).length > 0) {
+        optionsHTML = '<div class="item-options">';
+        for (const key in item.options) {
+          optionsHTML += `<p><strong>${key}:</strong> ${item.options[key]}</p>`;
+        }
+        optionsHTML += '</div>';
+      }
+      const imgSrc = item.product.images?.[0] || 'https://placehold.co/100x100?text=No+Image';
+      return `
+        <div class="order-item">
+          <img src="${imgSrc}" alt="${item.product.name}" class="product-image">
+          <div class="item-details">
+            <p class="item-name">${item.product.name}</p>
+            ${optionsHTML}
+            <p class="item-quantity">Qty: ${item.quantity}</p>
+            <p class="item-price">$${(item.product.price * item.quantity).toFixed(2)}</p>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    orderCard.innerHTML = `
+      <div class="order-header">
+        <span>Order #${order.id}</span>
+        <span>${new Date(order.date).toLocaleDateString()}</span>
+      </div>
+      <div class="customer-info">
+        <p><strong>Customer:</strong> ${order.customer.name}</p>
+        <p><strong>Email:</strong> ${order.customer.email}</p>
+        <p><strong>Phone:</strong> ${order.customer.phone}</p>
+        <p><strong>Status:</strong> <span class="status-${order.status.toLowerCase().replace(' ', '-')}">${order.status}</span></p>
+      </div>
+      ${deliveryHTML}
+      <div class="order-items">
+        ${itemsHTML}
+      </div>
+      <div class="order-total">
+        <p><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</p>
+      </div>
+      <div class="order-actions">
+        <button class="btn btn-small update-status" data-order="${order.id}">
+          Update Status
+        </button>
+      </div>
+    `;
+
+    container.appendChild(orderCard);
+
+    // Attach route button
+    const routeBtn = orderCard.querySelector('.show-route-btn');
+    if (routeBtn) {
+      routeBtn.addEventListener('click', function() {
+        const orderData = JSON.parse(this.getAttribute('data-order'));
+        showDeliveryRoute(orderData);
+      });
+    }
+
+    // Attach status update button
+    const statusBtn = orderCard.querySelector('.update-status');
+    if (statusBtn) {
+      statusBtn.addEventListener('click', function() {
+        updateOrderStatus(this.getAttribute('data-order'));
+      });
+    }
+  });
+}
 console.log('✅ Delivery system loaded successfully (fixed version)');
 });
